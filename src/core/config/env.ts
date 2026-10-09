@@ -10,9 +10,9 @@ import { Platform } from 'react-native';
 // - Physical devices use LAN IP (e.g. 192.168.1.X)
 const getDevApiBaseUrl = (): string => {
   if (Platform.OS === 'android') {
-    return 'http://10.0.2.2:3000/api/v1';
+    return 'http://localhost:3009/api/v1';
   }
-  return 'http://localhost:3000/api/v1';
+  return 'http://localhost:3009/api/v1';
 };
 
 export const AppConfig = {

@@ -63,16 +63,16 @@ export interface SeatLayoutItem {
 
 export interface SeatChartResponseData {
   BusId: number;
-  BusTypeName: string;
-  CompanyName: string;
-  DepartureTime: string;
-  ArrivalTime: string;
   TotalSeats: number;
   AvailableSeats: number;
   Layout: SeatLayoutItem[];
   BoardingPoints: BoardingPoint[];
   DroppingPoints: DroppingPoint[];
   CancellationPolicy: CancellationSlab[];
+  BusTypeName?: string;
+  CompanyName?: string;
+  DepartureTime?: string;
+  ArrivalTime?: string;
 }
 
 export interface BookingResponseData {

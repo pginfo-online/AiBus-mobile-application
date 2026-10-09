@@ -161,13 +161,18 @@ export default function SeatMapScreen() {
   const {
     fromCity,
     toCity,
+    journeyDate,
     selectedBus,
     selectedSeats,
     toggleSeat,
   } = useBookingStore();
 
   const busId = selectedBus?.RouteBusId || selectedBus?.BusId;
-  const { data: chart, isLoading, isError, error, refetch } = useSeatChartQuery(busId);
+  const { data: chart, isLoading, isError, error, refetch } = useSeatChartQuery(busId, {
+    fromCityId: fromCity.providerCityId,
+    toCityId: toCity.providerCityId,
+    journeyDate,
+  });
 
   // Deck tab: 1 = Lower Deck, 2 = Upper Deck
   const [activeDeck, setActiveDeck] = useState<number>(1);
