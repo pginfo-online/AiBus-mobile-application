@@ -10,6 +10,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as WebBrowser from 'expo-web-browser';
 import { useAppTheme } from '../../design-system/theme';
 import {
   AppText,
@@ -21,6 +22,7 @@ import {
 import { useTranslation } from '../../core/localization';
 import { useBookingStore } from '../../stores/bookingStore';
 import { useCreatePaymentIntentMutation } from '../../features/payments/usePaymentMutations';
+import { PendingPaymentStorage } from '../../core/storage';
 
 export default function PaymentScreen() {
   const router = useRouter();
@@ -84,13 +86,37 @@ export default function PaymentScreen() {
     }
 
     try {
-      // Create payment intent on backend
+      // 1. Create payment intent on backend
       const intentRes = await createIntentMutation.mutateAsync({
         bookingId: activeBookingId,
         gateway: 'PHONEPE',
       });
 
-      // Advance directly to transaction processing & verification screen
+      // 2. Persist pending transaction metadata to secure storage (process death resilience)
+      await PendingPaymentStorage.set({
+        bookingId: activeBookingId,
+        merchantTxnId: intentRes.merchantTxnId,
+        amount: intentRes.amount,
+        timestamp: Date.now(),
+      });
+
+      // 3. Launch PhonePe checkout via WebBrowser
+      if (intentRes.paymentUrl) {
+        try {
+          await WebBrowser.openAuthSessionAsync(
+            intentRes.paymentUrl,
+            'aibus://payment-result'
+          );
+        } catch {
+          try {
+            await WebBrowser.openBrowserAsync(intentRes.paymentUrl);
+          } catch {
+            // Proceed to processing screen
+          }
+        }
+      }
+
+      // 4. Advance to transaction processing & verification screen
       router.push({
         pathname: '/booking/processing' as any,
         params: {

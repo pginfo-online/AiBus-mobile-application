@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   StyleSheet,
@@ -18,6 +18,9 @@ import {
 import { useTranslation } from '../../core/localization';
 import { useVerifyPaymentMutation } from '../../features/payments/usePaymentMutations';
 import { useBookingStore } from '../../stores/bookingStore';
+import { PendingPaymentStorage } from '../../core/storage';
+
+const BACKOFF_DELAYS = [2000, 3000, 4500, 6000, 8000];
 
 export default function ProcessingPaymentScreen() {
   const router = useRouter();
@@ -25,25 +28,25 @@ export default function ProcessingPaymentScreen() {
   const { t } = useTranslation();
 
   const params = useLocalSearchParams<{
-    bookingId: string;
-    merchantTxnId: string;
+    bookingId?: string;
+    merchantTxnId?: string;
     amount?: string;
   }>();
 
-  const bookingId = params.bookingId;
-  const merchantTxnId = params.merchantTxnId;
-
   const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [statusNote, setStatusNote] = useState<string>('Initiating verification with payment gateway...');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isVerifying, setIsVerifying] = useState(true);
+  const [attemptCount, setAttemptCount] = useState(0);
 
   const verifyMutation = useVerifyPaymentMutation();
   const resetBookingFlow = useBookingStore((s) => s.resetBookingFlow);
+  const isCancelledRef = useRef(false);
 
   // Prevent hardware back button while transaction is in flight
   useEffect(() => {
     const backAction = () => {
-      if (isVerifying) return true; // block back
+      if (isVerifying) return true; // block back during active verification
       return false;
     };
 
@@ -51,71 +54,140 @@ export default function ProcessingPaymentScreen() {
     return () => backHandler.remove();
   }, [isVerifying]);
 
-  // Execute verification flow
-  useEffect(() => {
-    let isMounted = true;
+  const executeVerification = useCallback(async () => {
+    isCancelledRef.current = false;
+    setIsVerifying(true);
+    setErrorMessage(null);
+    setStep(1);
+    setStatusNote('Contacting payment gateway...');
 
-    async function executeVerification() {
-      if (!bookingId || !merchantTxnId) {
-        setErrorMessage('Invalid transaction reference. Please contact customer support.');
-        setIsVerifying(false);
-        return;
+    // 1. Resolve identifiers: query params or fallback to persistent storage
+    let bId = params.bookingId;
+    let mTxnId = params.merchantTxnId;
+
+    if (!bId || !mTxnId) {
+      const pending = await PendingPaymentStorage.get();
+      if (pending) {
+        bId = pending.bookingId;
+        mTxnId = pending.merchantTxnId;
+      }
+    }
+
+    if (!bId || !mTxnId) {
+      setIsVerifying(false);
+      setErrorMessage('Missing transaction reference. If amount was deducted, please check My Bookings or contact support.');
+      return;
+    }
+
+    try {
+      // Step 1: Processing delay for smooth UX
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      if (isCancelledRef.current) return;
+
+      setStep(2);
+      setStatusNote('Verifying transaction status with PhonePe & banking partner...');
+
+      // Polling loop with exponential backoff
+      let verifiedSuccess = false;
+      let finalStatus = 'PENDING';
+      let lastError = null;
+
+      for (let i = 0; i < BACKOFF_DELAYS.length; i++) {
+        if (isCancelledRef.current) return;
+        setAttemptCount(i + 1);
+
+        try {
+          const res = await verifyMutation.mutateAsync({
+            bookingId: bId,
+            merchantTxnId: mTxnId,
+          });
+
+          finalStatus = res.status;
+
+          if (res.status === 'SUCCESS') {
+            verifiedSuccess = true;
+            break;
+          } else if (res.status === 'FAILED') {
+            break;
+          } else {
+            // Still PENDING, wait with backoff
+            setStatusNote(`Awaiting bank confirmation (attempt ${i + 1}/${BACKOFF_DELAYS.length})...`);
+            await new Promise((r) => setTimeout(r, BACKOFF_DELAYS[i]));
+          }
+        } catch (err: any) {
+          lastError = err;
+          if (i < BACKOFF_DELAYS.length - 1) {
+            await new Promise((r) => setTimeout(r, BACKOFF_DELAYS[i]));
+          }
+        }
       }
 
-      try {
-        // Step 1: Processing
-        if (isMounted) setStep(1);
-        await new Promise((resolve) => setTimeout(resolve, 1200));
+      if (isCancelledRef.current) return;
 
-        // Step 2: Verifying with bank & PhonePe
-        if (isMounted) setStep(2);
-        const res = await verifyMutation.mutateAsync({
-          bookingId,
-          merchantTxnId,
-        });
-
-        // Step 3: Confirming with operator
-        if (isMounted) setStep(3);
+      if (verifiedSuccess) {
+        setStep(3);
+        setStatusNote('Payment confirmed! Issuing confirmed ticket...');
         await new Promise((resolve) => setTimeout(resolve, 800));
 
-        if (res.status === 'SUCCESS') {
-          try {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          } catch {
-            // Safe fallback
-          }
-          // Clear active transient booking state
-          resetBookingFlow();
+        // Clean up pending storage record
+        await PendingPaymentStorage.clear();
 
-          // Navigate directly to confirmed ticket screen
-          router.replace({
-            pathname: '/ticket/[bookingId]' as any,
-            params: { bookingId },
-          });
-        } else {
-          setErrorMessage('Payment confirmation is taking longer than expected. We are checking status.');
-          setIsVerifying(false);
+        try {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } catch {
+          // Safe fallback
         }
-      } catch (err: any) {
-        if (!isMounted) return;
+
+        // Reset transient booking selection store
+        resetBookingFlow();
+
+        // Navigate to confirmed ticket
+        router.replace({
+          pathname: '/ticket/[bookingId]' as any,
+          params: { bookingId: bId },
+        });
+      } else if (finalStatus === 'FAILED') {
+        await PendingPaymentStorage.clear();
         setIsVerifying(false);
-        setErrorMessage(
-          err.message || 'Payment could not be verified. If amount was debited, it will be refunded automatically.'
-        );
+        setErrorMessage('Payment failed or was declined by the bank. If money was debited, it will be refunded automatically within 5-7 business days.');
         try {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         } catch {
           // Safe fallback
         }
+      } else {
+        // Still pending after backoff
+        setIsVerifying(false);
+        setErrorMessage(
+          lastError?.message ||
+          'Payment status is currently pending with your bank. If the amount was debited, your ticket will be confirmed shortly or refunded automatically.'
+        );
+        try {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        } catch {
+          // Safe fallback
+        }
+      }
+    } catch (err: any) {
+      if (isCancelledRef.current) return;
+      setIsVerifying(false);
+      setErrorMessage(
+        err.message || 'Payment could not be verified. If amount was debited, it will be refunded automatically.'
+      );
+      try {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      } catch {
+        // Safe fallback
       }
     }
+  }, [params.bookingId, params.merchantTxnId, resetBookingFlow, router, verifyMutation]);
 
+  useEffect(() => {
     executeVerification();
-
     return () => {
-      isMounted = false;
+      isCancelledRef.current = true;
     };
-  }, [bookingId, merchantTxnId, resetBookingFlow, router, verifyMutation]);
+  }, [executeVerification]);
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
@@ -131,7 +203,7 @@ export default function ProcessingPaymentScreen() {
             </AppText>
 
             <AppText variant="body" align="center" style={{ color: colors.textSecondary, marginTop: spacing.xs }}>
-              {t('payment.processing')}
+              {statusNote}
             </AppText>
 
             {/* Stepper Status Indicators */}
@@ -194,29 +266,47 @@ export default function ProcessingPaymentScreen() {
           </View>
         ) : (
           <AppCard variant="elevated" padding="lg" style={[styles.errorCard, shadows.md]}>
-            <View style={[styles.errorIconCircle, { backgroundColor: colors.dangerSoft }]}>
-              <Ionicons name="alert-circle" size={48} color={colors.danger} />
+            <View style={[styles.errorIconCircle, { backgroundColor: colors.warningSoft }]}>
+              <Ionicons name="alert-circle" size={44} color={colors.warning} />
             </View>
 
             <AppText variant="heading2" align="center" style={{ color: colors.text, marginTop: spacing.md }}>
-              Transaction Incomplete
+              Verification Notice
             </AppText>
 
             <AppText
               variant="body"
               align="center"
-              style={{ color: colors.textSecondary, marginTop: spacing.xs, marginBottom: spacing.xl }}
+              style={{ color: colors.textSecondary, marginTop: spacing.xs, marginBottom: spacing.lg }}
             >
               {errorMessage}
             </AppText>
 
-            <AppButton
-              title="Return to Payment"
-              onPress={() => router.back()}
-              variant="primary"
-              size="lg"
-              fullWidth
-            />
+            <View style={styles.actionButtonGroup}>
+              <AppButton
+                title="Retry Verification"
+                onPress={() => executeVerification()}
+                variant="primary"
+                size="lg"
+                fullWidth
+              />
+              <View style={{ height: 12 }} />
+              <AppButton
+                title="Check My Bookings"
+                onPress={() => router.replace('/(tabs)/trips' as any)}
+                variant="outline"
+                size="md"
+                fullWidth
+              />
+              <View style={{ height: 8 }} />
+              <AppButton
+                title="Return to Payment"
+                onPress={() => router.back()}
+                variant="ghost"
+                size="sm"
+                fullWidth
+              />
+            </View>
           </AppCard>
         )}
       </View>
@@ -268,5 +358,9 @@ const styles = StyleSheet.create({
     borderRadius: 36,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  actionButtonGroup: {
+    width: '100%',
+    marginTop: 8,
   },
 });

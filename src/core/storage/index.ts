@@ -71,3 +71,48 @@ export const SecureTokenStorage = {
     }
   },
 };
+
+const PENDING_PAYMENT_KEY = 'aibus_pending_payment';
+
+export interface PendingPaymentRecord {
+  bookingId: string;
+  merchantTxnId: string;
+  amount: number;
+  timestamp: number;
+}
+
+export const PendingPaymentStorage = {
+  async get(): Promise<PendingPaymentRecord | null> {
+    try {
+      const raw = Platform.OS === 'web'
+        ? localStorage.getItem(PENDING_PAYMENT_KEY)
+        : await SecureStore.getItemAsync(PENDING_PAYMENT_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  },
+  async set(record: PendingPaymentRecord): Promise<void> {
+    try {
+      const val = JSON.stringify(record);
+      if (Platform.OS === 'web') {
+        localStorage.setItem(PENDING_PAYMENT_KEY, val);
+      } else {
+        await SecureStore.setItemAsync(PENDING_PAYMENT_KEY, val);
+      }
+    } catch (err) {
+      console.warn('Failed to store pending payment record', err);
+    }
+  },
+  async clear(): Promise<void> {
+    try {
+      if (Platform.OS === 'web') {
+        localStorage.removeItem(PENDING_PAYMENT_KEY);
+      } else {
+        await SecureStore.deleteItemAsync(PENDING_PAYMENT_KEY);
+      }
+    } catch (err) {
+      console.warn('Failed to clear pending payment record', err);
+    }
+  },
+};
