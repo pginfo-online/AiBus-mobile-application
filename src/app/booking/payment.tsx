@@ -73,14 +73,6 @@ const PAYMENT_METHODS: PaymentMethodOption[] = [
     gateway: 'RAZORPAY',
     paymentMode: 'WALLET',
   },
-  {
-    id: 'phonepe_gateway',
-    titleKey: 'payment.phonepe_upi',
-    subtitle: 'PhonePe UPI & Standard Checkout',
-    icon: 'flash-outline',
-    gateway: 'PHONEPE',
-    paymentMode: 'ALL',
-  },
 ];
 
 export default function PaymentScreen() {

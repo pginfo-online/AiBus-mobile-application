@@ -43,6 +43,8 @@ export default function ReviewBookingScreen() {
     contactPhone,
     gstin,
     gstCompany,
+    activeHold,
+    activeBookingId,
     setActiveHold,
     setActiveBooking,
   } = useBookingStore();
@@ -66,69 +68,84 @@ export default function ReviewBookingScreen() {
     setIsSubmitting(true);
 
     try {
-      // 1. Acquire Seat Hold from backend & upstream provider
-      const holdRes = await holdMutation.mutateAsync({
-        fromCityId: fromCity.providerCityId,
-        toCityId: toCity.providerCityId,
-        journeyDate,
-        busId: selectedBus.RouteBusId || selectedBus.BusId,
-        pickupId: selectedBoardingPoint.code,
-        dropoffId: selectedDroppingPoint.code,
-        contactInfo: {
-          customerName: contactName,
-          email: contactEmail,
-          phone: contactPhone,
-          mobile: contactPhone,
-        },
-        gstDetails: gstin ? { gstin, gstCompany: gstCompany || '' } : undefined,
-        passengers: passengers.map((p) => ({
-          seatNo: p.seatNo,
-          seatTypeId: p.seatTypeId,
-          fare: p.fare,
-          gender: p.gender,
-          age: p.age,
-          name: p.name,
-          isAcSeat: p.isAcSeat,
-        })),
-      });
+      // 1. Acquire or reuse valid Seat Hold from backend & upstream provider
+      let holdId = activeHold?.id;
+      let effectiveTotalFare = activeHold?.totalFare || totalFare;
 
-      setActiveHold({
-        id: holdRes.id,
-        providerHoldId: holdRes.providerHoldId,
-        expiresAt: holdRes.expiresAt,
-        ttlSeconds: holdRes.ttlSeconds || 600,
-        totalFare: holdRes.totalFare || totalFare,
-      });
+      const isHoldValid =
+        activeHold &&
+        activeHold.id &&
+        new Date(activeHold.expiresAt).getTime() > Date.now() + 30000;
 
-      // 2. Create Booking record in status HELD
-      const bookingRes = await createBookingMutation.mutateAsync({
-        holdId: holdRes.id,
-        fromCityId: fromCity.providerCityId,
-        toCityId: toCity.providerCityId,
-        fromCityName: fromCity.name,
-        toCityName: toCity.name,
-        journeyDate,
-        busId: selectedBus.RouteBusId || selectedBus.BusId,
-        tripId: selectedBus.TripId || 'TRIP-DEFAULT',
-        pickupCode: selectedBoardingPoint.code,
-        pickupLocation: selectedBoardingPoint.name,
-        pickupTime: selectedBoardingPoint.time,
-        dropoffCode: selectedDroppingPoint.code,
-        dropoffLocation: selectedDroppingPoint.name,
-        dropoffTime: selectedDroppingPoint.time,
-        operatorName: selectedBus.CompanyName,
-        busType: selectedBus.BusTypeName,
-        totalFare: holdRes.totalFare || totalFare,
-        baseFare,
-        serviceTax: taxes,
-        contactName,
-        contactEmail,
-        contactPhone,
-        passengers,
-        cancellationPolicy: selectedBus.CancellationPolicy,
-      });
+      if (!isHoldValid) {
+        const holdRes = await holdMutation.mutateAsync({
+          fromCityId: fromCity.providerCityId,
+          toCityId: toCity.providerCityId,
+          journeyDate,
+          busId: selectedBus.RouteBusId || selectedBus.BusId,
+          pickupId: selectedBoardingPoint.code,
+          dropoffId: selectedDroppingPoint.code,
+          contactInfo: {
+            customerName: contactName,
+            email: contactEmail,
+            phone: contactPhone,
+            mobile: contactPhone,
+          },
+          gstDetails: gstin ? { gstin, gstCompany: gstCompany || '' } : undefined,
+          passengers: passengers.map((p) => ({
+            seatNo: p.seatNo,
+            seatTypeId: p.seatTypeId,
+            fare: p.fare,
+            gender: p.gender,
+            age: p.age,
+            name: p.name,
+            isAcSeat: p.isAcSeat,
+          })),
+        });
 
-      setActiveBooking(bookingRes.id, bookingRes.bookingNumber);
+        holdId = holdRes.id;
+        effectiveTotalFare = holdRes.totalFare || totalFare;
+
+        setActiveHold({
+          id: holdRes.id,
+          providerHoldId: holdRes.providerHoldId,
+          expiresAt: holdRes.expiresAt,
+          ttlSeconds: holdRes.ttlSeconds || 600,
+          totalFare: holdRes.totalFare || totalFare,
+        });
+      }
+
+      // 2. Create Booking record in status HELD (or reuse active booking if already initiated)
+      if (!activeBookingId) {
+        const bookingRes = await createBookingMutation.mutateAsync({
+          holdId: holdId || undefined,
+          fromCityId: fromCity.providerCityId,
+          toCityId: toCity.providerCityId,
+          fromCityName: fromCity.name,
+          toCityName: toCity.name,
+          journeyDate,
+          busId: selectedBus.RouteBusId || selectedBus.BusId,
+          tripId: selectedBus.TripId || 'TRIP-DEFAULT',
+          pickupCode: selectedBoardingPoint.code,
+          pickupLocation: selectedBoardingPoint.name,
+          pickupTime: selectedBoardingPoint.time,
+          dropoffCode: selectedDroppingPoint.code,
+          dropoffLocation: selectedDroppingPoint.name,
+          dropoffTime: selectedDroppingPoint.time,
+          operatorName: selectedBus.CompanyName,
+          busType: selectedBus.BusTypeName,
+          totalFare: effectiveTotalFare,
+          baseFare,
+          serviceTax: taxes,
+          contactName,
+          contactEmail,
+          contactPhone,
+          passengers,
+          cancellationPolicy: selectedBus.CancellationPolicy,
+        });
+
+        setActiveBooking(bookingRes.id, bookingRes.bookingNumber);
+      }
 
       // 3. Advance to Payment Screen
       router.push('/booking/payment' as any);
@@ -136,12 +153,21 @@ export default function ReviewBookingScreen() {
       const errorMsg =
         err instanceof DomainError
           ? err.message
-          : err?.response?.data?.error?.message || 'Failed to hold seats. Please try selecting different seats.';
+          : err?.response?.data?.error?.message || err?.message || 'Failed to hold seats. Please try again.';
 
-      Alert.alert('Hold Failed', errorMsg, [
+      Alert.alert('Unable to Proceed', errorMsg, [
+        {
+          text: 'Retry',
+          onPress: () => handleConfirmAndPay(),
+        },
         {
           text: 'Choose Other Seats',
-          onPress: () => router.navigate('/booking/seat-map' as any),
+          onPress: () => {
+            setActiveHold(null);
+            setActiveBooking(null, null);
+            router.navigate('/booking/seat-map' as any);
+          },
+          style: 'cancel',
         },
       ]);
     } finally {

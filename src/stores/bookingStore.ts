@@ -146,6 +146,8 @@ export const useBookingStore = create<BookingFlowState>((set, get) => ({
       selectedDroppingPoint: null,
       passengers: [],
       activeHold: null,
+      activeBookingId: null,
+      activeBookingNumber: null,
     }),
 
   toggleSeat: (seat) => {
@@ -155,19 +157,35 @@ export const useBookingStore = create<BookingFlowState>((set, get) => ({
     if (existingIndex >= 0) {
       // Remove seat
       const updated = selectedSeats.filter((s) => s.seatNo !== seat.seatNo);
-      set({ selectedSeats: updated });
+      set({
+        selectedSeats: updated,
+        activeHold: null,
+        activeBookingId: null,
+        activeBookingNumber: null,
+      });
       return true;
     } else {
       // Max 6 seats limit
       if (selectedSeats.length >= 6) {
         return false;
       }
-      set({ selectedSeats: [...selectedSeats, seat] });
+      set({
+        selectedSeats: [...selectedSeats, seat],
+        activeHold: null,
+        activeBookingId: null,
+        activeBookingNumber: null,
+      });
       return true;
     }
   },
 
-  clearSeats: () => set({ selectedSeats: [] }),
+  clearSeats: () =>
+    set({
+      selectedSeats: [],
+      activeHold: null,
+      activeBookingId: null,
+      activeBookingNumber: null,
+    }),
 
   setSelectedBoardingPoint: (point) => set({ selectedBoardingPoint: point }),
   setSelectedDroppingPoint: (point) => set({ selectedDroppingPoint: point }),

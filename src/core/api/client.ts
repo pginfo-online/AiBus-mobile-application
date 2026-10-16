@@ -50,8 +50,12 @@ apiClient.interceptors.request.use(
 
     // Attach Bearer Access Token if present
     const token = await SecureTokenStorage.getAccessToken();
-    if (token && !config.headers.Authorization) {
-      config.headers.Authorization = `Bearer ${token}`;
+    if (token) {
+      if (typeof (config.headers as any).set === 'function') {
+        (config.headers as any).set('Authorization', `Bearer ${token}`);
+      } else {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
     }
 
     return config;

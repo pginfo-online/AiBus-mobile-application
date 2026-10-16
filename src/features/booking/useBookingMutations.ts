@@ -31,7 +31,7 @@ export interface HoldSeatsPayload {
 }
 
 export interface CreateBookingPayload {
-  holdId: string;
+  holdId?: string;
   fromCityId: number;
   toCityId: number;
   fromCityName: string;
