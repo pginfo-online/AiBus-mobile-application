@@ -79,6 +79,10 @@ export interface PendingPaymentRecord {
   merchantTxnId: string;
   amount: number;
   timestamp: number;
+  gateway?: string;
+  gatewayOrderId?: string;
+  gatewayPaymentId?: string;
+  gatewaySignature?: string;
 }
 
 export const PendingPaymentStorage = {
@@ -114,5 +118,8 @@ export const PendingPaymentStorage = {
     } catch (err) {
       console.warn('Failed to clear pending payment record', err);
     }
+  },
+  isExpired(record: PendingPaymentRecord, ttlMs: number = 15 * 60 * 1000): boolean {
+    return Date.now() - record.timestamp > ttlMs;
   },
 };

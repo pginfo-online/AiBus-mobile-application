@@ -48,12 +48,12 @@
   "scripts": {
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
     "type-check": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/error-normalizer.test.ts tests/localization.test.ts tests/booking-store.test.ts tests/formatters-and-validation.test.ts"
+    "test": "node --experimental-strip-types --test tests/error-normalizer.test.ts tests/localization.test.ts tests/booking-store.test.ts tests/formatters-and-validation.test.ts tests/razorpay-service.test.ts"
   },
   "private": true
 }

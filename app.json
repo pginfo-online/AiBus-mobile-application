@@ -39,6 +39,7 @@
     "plugins": [
       "expo-router",
       "./plugins/withPhonePe.ts",
+      "./plugins/withRazorpay.ts",
       [
         "expo-splash-screen",
         {

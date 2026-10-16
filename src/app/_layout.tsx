@@ -9,6 +9,7 @@ import { ThemeProvider, useAppTheme } from '../design-system/theme';
 import { LanguageProvider } from '../core/localization';
 import { useAuthStore } from '../stores/authStore';
 import { useAppStore } from '../stores/appStore';
+import { PendingPaymentStorage } from '../core/storage';
 
 function RootNavigationLayout() {
   const { colors, isDark } = useAppTheme();
@@ -16,6 +17,11 @@ function RootNavigationLayout() {
 
   useEffect(() => {
     bootstrapAuth();
+    PendingPaymentStorage.get().then((pending) => {
+      if (pending && PendingPaymentStorage.isExpired(pending)) {
+        PendingPaymentStorage.clear();
+      }
+    });
   }, [bootstrapAuth]);
 
   return (

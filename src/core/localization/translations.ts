@@ -97,12 +97,19 @@ export const translations: Record<SupportedLanguage, Record<string, string>> = {
     // Payment
     'payment.title': 'Select Payment Method',
     'payment.timer': 'Session expires in',
-    'payment.phonepe_upi': 'PhonePe UPI & QR',
+    'payment.razorpay_upi': 'UPI (Google Pay, PhonePe, Paytm, CRED)',
+    'payment.phonepe_upi': 'PhonePe UPI & PG',
     'payment.cards': 'Debit / Credit Card',
     'payment.netbanking': 'Net Banking',
+    'payment.wallets': 'Wallets (Paytm, Mobikwik, PhonePe)',
     'payment.pay_btn': 'Pay ₹{amount}',
     'payment.verifying': 'Verifying payment with your bank...',
     'payment.processing': 'Please do not press back or close the app.',
+    'payment.secure_badge': '256-Bit SSL Encrypted • 100% Safe & Secure',
+    'payment.cancelled': 'Payment was cancelled. You can retry with another payment method.',
+    'payment.failed': 'Payment failed. Any amount debited will be refunded automatically within 5-7 business days.',
+    'payment.verifying_gateway': 'Connecting to payment gateway...',
+    'payment.confirming_ticket': 'Payment received! Confirming your bus ticket...',
 
     // Ticket & Bookings
     'ticket.title': 'Booking Confirmed!',
@@ -236,12 +243,19 @@ export const translations: Record<SupportedLanguage, Record<string, string>> = {
     // Payment
     'payment.title': 'भुगतान विधि चुनें',
     'payment.timer': 'सत्र समाप्त होने में समय',
-    'payment.phonepe_upi': 'PhonePe यूपीआई और क्यूआर',
+    'payment.razorpay_upi': 'यूपीआई (Google Pay, PhonePe, Paytm, CRED)',
+    'payment.phonepe_upi': 'PhonePe यूपीआई और पीजी',
     'payment.cards': 'डेबिट / क्रेडिट कार्ड',
     'payment.netbanking': 'नेट बैंकिंग',
+    'payment.wallets': 'वॉलेट्स (Paytm, Mobikwik, PhonePe)',
     'payment.pay_btn': 'भुगतान करें ₹{amount}',
     'payment.verifying': 'बैंक के साथ भुगतान की पुष्टि की जा रही है...',
     'payment.processing': 'कृपया पीछे न जाएं या ऐप बंद न करें।',
+    'payment.secure_badge': '256-बिट एसएसएल एन्क्रिप्टेड • 100% सुरक्षित',
+    'payment.cancelled': 'भुगतान रद्द कर दिया गया था। आप दूसरी भुगतान विधि से पुनः प्रयास कर सकते हैं।',
+    'payment.failed': 'भुगतान विफल रहा। काटा गया कोई भी पैसा 5-7 कार्य दिवसों में स्वतः वापस कर दिया जाएगा।',
+    'payment.verifying_gateway': 'पेमेंट गेटवे से कनेक्ट हो रहा है...',
+    'payment.confirming_ticket': 'भुगतान प्राप्त हुआ! आपका बस टिकट कन्फ़र्म किया जा रहा है...',
 
     // Ticket & Bookings
     'ticket.title': 'बुकिंग सफल रही!',
@@ -375,12 +389,19 @@ export const translations: Record<SupportedLanguage, Record<string, string>> = {
     // Payment
     'payment.title': 'पेमेंट पद्धत निवडा',
     'payment.timer': 'सत्र समाप्त होण्यासाठी वेळ',
-    'payment.phonepe_upi': 'PhonePe यूपीआय आणि क्यूआर',
+    'payment.razorpay_upi': 'यूपीआय (Google Pay, PhonePe, Paytm, CRED)',
+    'payment.phonepe_upi': 'PhonePe यूपीआय आणि पीजी',
     'payment.cards': 'डेबिट / क्रेडिट कार्ड',
     'payment.netbanking': 'नेट बँकिंग',
+    'payment.wallets': 'वॉलेट्स (Paytm, Mobikwik, PhonePe)',
     'payment.pay_btn': 'पेमेंट करा ₹{amount}',
     'payment.verifying': 'बँकेकडून पेमेंटची खात्री केली जात आहे...',
     'payment.processing': 'कृपया मागे जाऊ नका किंवा ॲप बंद करू नका.',
+    'payment.secure_badge': '256-बिट SSL एन्क्रिप्टेड • 100% सुरक्षित',
+    'payment.cancelled': 'पेमेंट रद्द केले गेले. आपण दुसऱ्या पद्धतीसह पुन्हा प्रयत्न करू शकता.',
+    'payment.failed': 'पेमेंट अयशस्वी झाले. कापलेली रक्कम 5-7 कामकाजाच्या दिवसांत परत केली जाईल.',
+    'payment.verifying_gateway': 'पेमेंट गेटवेशी संपर्क साधला जात आहे...',
+    'payment.confirming_ticket': 'पेमेंट मिळाले! तुमचे बस तिकीट कन्फर्म केले जात आहे...',
 
     // Ticket & Bookings
     'ticket.title': 'बुकिंग यशस्वी!',

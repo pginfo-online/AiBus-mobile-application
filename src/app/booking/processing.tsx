@@ -22,6 +22,8 @@ import { PendingPaymentStorage } from '../../core/storage';
 
 const BACKOFF_DELAYS = [2000, 3000, 4500, 6000, 8000];
 
+type VerificationPhase = 'VERIFYING_GATEWAY' | 'CONFIRMING_BOOKING' | 'SUCCESS' | 'FAILED' | 'PENDING_TIMEOUT';
+
 export default function ProcessingPaymentScreen() {
   const router = useRouter();
   const { colors, spacing, radii, shadows } = useAppTheme();
@@ -31,22 +33,25 @@ export default function ProcessingPaymentScreen() {
     bookingId?: string;
     merchantTxnId?: string;
     amount?: string;
+    gatewayOrderId?: string;
+    gatewayPaymentId?: string;
+    gatewaySignature?: string;
   }>();
 
-  const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [statusNote, setStatusNote] = useState<string>('Initiating verification with payment gateway...');
+  const [phase, setPhase] = useState<VerificationPhase>('VERIFYING_GATEWAY');
+  const [statusNote, setStatusNote] = useState<string>('Verifying payment signature with Razorpay & bank...');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isVerifying, setIsVerifying] = useState(true);
-  const [attemptCount, setAttemptCount] = useState(0);
+  const [isVerifying, setIsVerifying] = useState<boolean>(true);
+  const [attemptCount, setAttemptCount] = useState<number>(0);
 
   const verifyMutation = useVerifyPaymentMutation();
   const resetBookingFlow = useBookingStore((s) => s.resetBookingFlow);
-  const isCancelledRef = useRef(false);
+  const isCancelledRef = useRef<boolean>(false);
 
-  // Prevent hardware back button while transaction is in flight
+  // Prevent hardware back button while transaction verification is active
   useEffect(() => {
     const backAction = () => {
-      if (isVerifying) return true; // block back during active verification
+      if (isVerifying) return true; // Block hardware back during active verification
       return false;
     };
 
@@ -58,40 +63,44 @@ export default function ProcessingPaymentScreen() {
     isCancelledRef.current = false;
     setIsVerifying(true);
     setErrorMessage(null);
-    setStep(1);
-    setStatusNote('Contacting payment gateway...');
+    setPhase('VERIFYING_GATEWAY');
+    setStatusNote('Verifying transaction authenticity with payment gateway...');
 
     // 1. Resolve identifiers: query params or fallback to persistent storage
     let bId = params.bookingId;
     let mTxnId = params.merchantTxnId;
+    let gOrderId = params.gatewayOrderId;
+    let gPaymentId = params.gatewayPaymentId;
+    let gSignature = params.gatewaySignature;
 
     if (!bId || !mTxnId) {
       const pending = await PendingPaymentStorage.get();
       if (pending) {
         bId = pending.bookingId;
         mTxnId = pending.merchantTxnId;
+        gOrderId = gOrderId || pending.gatewayOrderId;
+        gPaymentId = gPaymentId || pending.gatewayPaymentId;
+        gSignature = gSignature || pending.gatewaySignature;
       }
     }
 
     if (!bId || !mTxnId) {
       setIsVerifying(false);
-      setErrorMessage('Missing transaction reference. If amount was deducted, please check My Bookings or contact support.');
+      setErrorMessage(
+        'Transaction reference could not be located. If money was deducted, please check your bookings or contact 24/7 customer support.'
+      );
       return;
     }
 
     try {
-      // Step 1: Processing delay for smooth UX
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      if (isCancelledRef.current) return;
+      setPhase('CONFIRMING_BOOKING');
+      setStatusNote('Cryptographically verifying signature & securing seats with bus operator...');
 
-      setStep(2);
-      setStatusNote('Verifying transaction status with PhonePe & banking partner...');
-
-      // Polling loop with exponential backoff
       let verifiedSuccess = false;
       let finalStatus = 'PENDING';
-      let lastError = null;
+      let lastError: any = null;
 
+      // Verification loop with exponential backoff (for webhook/bank reconciliation)
       for (let i = 0; i < BACKOFF_DELAYS.length; i++) {
         if (isCancelledRef.current) return;
         setAttemptCount(i + 1);
@@ -100,6 +109,9 @@ export default function ProcessingPaymentScreen() {
           const res = await verifyMutation.mutateAsync({
             bookingId: bId,
             merchantTxnId: mTxnId,
+            gatewayOrderId: gOrderId || undefined,
+            gatewayPaymentId: gPaymentId || undefined,
+            gatewaySignature: gSignature || undefined,
           });
 
           finalStatus = res.status;
@@ -110,12 +122,23 @@ export default function ProcessingPaymentScreen() {
           } else if (res.status === 'FAILED') {
             break;
           } else {
-            // Still PENDING, wait with backoff
+            // Still PENDING at bank, retry with backoff
             setStatusNote(`Awaiting bank confirmation (attempt ${i + 1}/${BACKOFF_DELAYS.length})...`);
             await new Promise((r) => setTimeout(r, BACKOFF_DELAYS[i]));
           }
         } catch (err: any) {
           lastError = err;
+          // Check if booking was marked UNKNOWN or FAILED after payment
+          const errMsg = err?.message || '';
+          if (errMsg.includes('already confirmed') || errMsg.includes('already completed')) {
+            verifiedSuccess = true;
+            break;
+          }
+          if (errMsg.includes('declined') || errMsg.includes('Payment failed') || errMsg.includes('mismatch')) {
+            finalStatus = 'FAILED';
+            break;
+          }
+
           if (i < BACKOFF_DELAYS.length - 1) {
             await new Promise((r) => setTimeout(r, BACKOFF_DELAYS[i]));
           }
@@ -125,9 +148,8 @@ export default function ProcessingPaymentScreen() {
       if (isCancelledRef.current) return;
 
       if (verifiedSuccess) {
-        setStep(3);
-        setStatusNote('Payment confirmed! Issuing confirmed ticket...');
-        await new Promise((resolve) => setTimeout(resolve, 800));
+        setPhase('SUCCESS');
+        setStatusNote('Payment verified! Your confirmed bus ticket has been issued.');
 
         // Clean up pending storage record
         await PendingPaymentStorage.clear();
@@ -138,29 +160,37 @@ export default function ProcessingPaymentScreen() {
           // Safe fallback
         }
 
-        // Reset transient booking selection store
+        // Reset transient booking state
         resetBookingFlow();
 
-        // Navigate to confirmed ticket
-        router.replace({
-          pathname: '/ticket/[bookingId]' as any,
-          params: { bookingId: bId },
-        });
+        // Short confirmation pause before navigating to ticket
+        setTimeout(() => {
+          if (!isCancelledRef.current) {
+            router.replace({
+              pathname: '/ticket/[bookingId]' as any,
+              params: { bookingId: bId },
+            });
+          }
+        }, 500);
       } else if (finalStatus === 'FAILED') {
         await PendingPaymentStorage.clear();
         setIsVerifying(false);
-        setErrorMessage('Payment failed or was declined by the bank. If money was debited, it will be refunded automatically within 5-7 business days.');
+        setPhase('FAILED');
+        setErrorMessage(
+          lastError?.message ||
+            'Payment verification failed or was declined by the bank. If money was debited, it will be automatically refunded within 5-7 business days.'
+        );
         try {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         } catch {
           // Safe fallback
         }
       } else {
-        // Still pending after backoff
+        // Pending timeout after max backoff
         setIsVerifying(false);
+        setPhase('PENDING_TIMEOUT');
         setErrorMessage(
-          lastError?.message ||
-          'Payment status is currently pending with your bank. If the amount was debited, your ticket will be confirmed shortly or refunded automatically.'
+          'Your payment confirmation is taking slightly longer with the banking network. If amount was debited, your ticket will be confirmed shortly or automatically refunded.'
         );
         try {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -171,8 +201,9 @@ export default function ProcessingPaymentScreen() {
     } catch (err: any) {
       if (isCancelledRef.current) return;
       setIsVerifying(false);
+      setPhase('FAILED');
       setErrorMessage(
-        err.message || 'Payment could not be verified. If amount was debited, it will be refunded automatically.'
+        err.message || 'Payment could not be confirmed. If amount was debited, it will be refunded automatically.'
       );
       try {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -180,7 +211,16 @@ export default function ProcessingPaymentScreen() {
         // Safe fallback
       }
     }
-  }, [params.bookingId, params.merchantTxnId, resetBookingFlow, router, verifyMutation]);
+  }, [
+    params.bookingId,
+    params.merchantTxnId,
+    params.gatewayOrderId,
+    params.gatewayPaymentId,
+    params.gatewaySignature,
+    resetBookingFlow,
+    router,
+    verifyMutation,
+  ]);
 
   useEffect(() => {
     executeVerification();
@@ -202,76 +242,111 @@ export default function ProcessingPaymentScreen() {
               {t('payment.verifying')}
             </AppText>
 
-            <AppText variant="body" align="center" style={{ color: colors.textSecondary, marginTop: spacing.xs }}>
+            <AppText
+              variant="body"
+              align="center"
+              style={{ color: colors.textSecondary, marginTop: spacing.xs, paddingHorizontal: 16 }}
+            >
               {statusNote}
             </AppText>
 
             {/* Stepper Status Indicators */}
             <View style={[styles.stepperContainer, { marginTop: spacing.xl }]}>
+              {/* Step 1: Gateway Authorization */}
               <View style={styles.stepRow}>
                 <Ionicons
-                  name={step >= 1 ? 'checkmark-circle' : 'ellipse-outline'}
-                  size={20}
-                  color={step >= 1 ? colors.success : colors.textMuted}
+                  name="checkmark-circle"
+                  size={22}
+                  color={colors.success}
                 />
-                <AppText
-                  variant="bodyMedium"
-                  style={{
-                    color: step >= 1 ? colors.text : colors.textMuted,
-                    marginLeft: 10,
-                  }}
-                >
-                  Initiating PhonePe transaction
-                </AppText>
+                <View style={{ marginLeft: 12 }}>
+                  <AppText variant="bodyMedium" style={{ fontWeight: '600', color: colors.text }}>
+                    Payment Authorized
+                  </AppText>
+                  <AppText variant="caption" style={{ color: colors.textMuted }}>
+                    Authorization received from payment gateway
+                  </AppText>
+                </View>
               </View>
 
-              <View style={[styles.stepLine, { backgroundColor: step >= 2 ? colors.success : colors.border }]} />
+              <View style={[styles.stepLine, { backgroundColor: colors.success }]} />
 
+              {/* Step 2: Signature Verification & Operator Sync */}
               <View style={styles.stepRow}>
                 <Ionicons
-                  name={step >= 2 ? 'checkmark-circle' : 'ellipse-outline'}
-                  size={20}
-                  color={step >= 2 ? colors.success : colors.textMuted}
+                  name={phase === 'CONFIRMING_BOOKING' || phase === 'SUCCESS' ? 'checkmark-circle' : 'time-outline'}
+                  size={22}
+                  color={phase === 'CONFIRMING_BOOKING' || phase === 'SUCCESS' ? colors.success : colors.warning}
                 />
-                <AppText
-                  variant="bodyMedium"
-                  style={{
-                    color: step >= 2 ? colors.text : colors.textMuted,
-                    marginLeft: 10,
-                  }}
-                >
-                  Verifying payment confirmation
-                </AppText>
+                <View style={{ marginLeft: 12 }}>
+                  <AppText variant="bodyMedium" style={{ fontWeight: '600', color: colors.text }}>
+                    Cryptographic Verification
+                  </AppText>
+                  <AppText variant="caption" style={{ color: colors.textMuted }}>
+                    Verifying HMAC signature with Razorpay servers
+                  </AppText>
+                </View>
               </View>
 
-              <View style={[styles.stepLine, { backgroundColor: step >= 3 ? colors.success : colors.border }]} />
+              <View
+                style={[
+                  styles.stepLine,
+                  { backgroundColor: phase === 'SUCCESS' ? colors.success : colors.border },
+                ]}
+              />
 
+              {/* Step 3: Ticket Issuance */}
               <View style={styles.stepRow}>
                 <Ionicons
-                  name={step >= 3 ? 'checkmark-circle' : 'ellipse-outline'}
-                  size={20}
-                  color={step >= 3 ? colors.success : colors.textMuted}
+                  name={phase === 'SUCCESS' ? 'checkmark-circle' : 'ellipse-outline'}
+                  size={22}
+                  color={phase === 'SUCCESS' ? colors.success : colors.textMuted}
                 />
-                <AppText
-                  variant="bodyMedium"
-                  style={{
-                    color: step >= 3 ? colors.text : colors.textMuted,
-                    marginLeft: 10,
-                  }}
-                >
-                  Issuing confirmed bus ticket
-                </AppText>
+                <View style={{ marginLeft: 12 }}>
+                  <AppText
+                    variant="bodyMedium"
+                    style={{
+                      fontWeight: '600',
+                      color: phase === 'SUCCESS' ? colors.text : colors.textMuted,
+                    }}
+                  >
+                    Ticket Confirmation
+                  </AppText>
+                  <AppText variant="caption" style={{ color: colors.textMuted }}>
+                    Generating official PNR & booking ticket
+                  </AppText>
+                </View>
               </View>
             </View>
+
+            <AppText
+              variant="caption"
+              align="center"
+              style={{ color: colors.textMuted, marginTop: 32 }}
+            >
+              {t('payment.processing')}
+            </AppText>
           </View>
         ) : (
           <AppCard variant="elevated" padding="lg" style={[styles.errorCard, shadows.md]}>
-            <View style={[styles.errorIconCircle, { backgroundColor: colors.warningSoft }]}>
-              <Ionicons name="alert-circle" size={44} color={colors.warning} />
+            <View
+              style={[
+                styles.errorIconCircle,
+                {
+                  backgroundColor:
+                    phase === 'PENDING_TIMEOUT' ? colors.warningSoft : colors.dangerSoft,
+                },
+              ]}
+            >
+              <Ionicons
+                name={phase === 'PENDING_TIMEOUT' ? 'time-outline' : 'alert-circle'}
+                size={44}
+                color={phase === 'PENDING_TIMEOUT' ? colors.warning : colors.danger}
+              />
             </View>
 
             <AppText variant="heading2" align="center" style={{ color: colors.text, marginTop: spacing.md }}>
-              Verification Notice
+              {phase === 'PENDING_TIMEOUT' ? 'Payment Status Pending' : 'Payment Verification Failed'}
             </AppText>
 
             <AppText
@@ -293,14 +368,14 @@ export default function ProcessingPaymentScreen() {
               <View style={{ height: 12 }} />
               <AppButton
                 title="Check My Bookings"
-                onPress={() => router.replace('/(tabs)/trips' as any)}
+                onPress={() => router.replace('/(tabs)/bookings' as any)}
                 variant="outline"
                 size="md"
                 fullWidth
               />
               <View style={{ height: 8 }} />
               <AppButton
-                title="Return to Payment"
+                title="Return to Payment Methods"
                 onPress={() => router.back()}
                 variant="ghost"
                 size="sm"
@@ -336,7 +411,7 @@ const styles = StyleSheet.create({
   },
   stepperContainer: {
     width: '100%',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
   },
   stepRow: {
     flexDirection: 'row',
@@ -344,8 +419,8 @@ const styles = StyleSheet.create({
   },
   stepLine: {
     width: 2,
-    height: 24,
-    marginLeft: 9,
+    height: 28,
+    marginLeft: 10,
     marginVertical: 4,
   },
   errorCard: {
