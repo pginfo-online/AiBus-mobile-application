@@ -57,16 +57,24 @@ export const LightColors = {
 
   // Bus & Seat Map Domain Specific
   seatAvailable: '#FFFFFF',
-  seatAvailableBorder: '#94A3B8',
+  seatAvailableBorder: '#16A34A',
   seatSelected: '#16A34A',
   seatSelectedText: '#FFFFFF',
-  seatBooked: '#E2E8F0',
-  seatBookedBorder: '#CBD5E1',
-  seatMale: '#0284C7',
-  seatMaleSoft: '#E0F2FE',
+  seatBooked: '#F3F4F6',
+  seatBookedBorder: '#E5E7EB',
+  seatSoldText: '#9CA3AF',
+  seatMale: '#2563EB',
+  seatMaleSoft: '#EFF6FF',
   seatFemale: '#EC4899',
   seatFemaleSoft: '#FCE7F3',
   sleeperLength: '#F8FAFC',
+
+  // Promos & Badges
+  navyBanner: '#0D2149',
+  ratingGreen: '#15803D',
+  ratingGreenSoft: '#DCFCE7',
+  pillCoral: '#FEE2E2',
+  pillCoralText: '#DC2626',
 
   // Overlay & Backdrop
   backdrop: 'rgba(15, 23, 42, 0.65)',
@@ -127,16 +135,24 @@ export const DarkColors = {
 
   // Bus & Seat Map Domain Specific
   seatAvailable: '#172033',
-  seatAvailableBorder: '#475569',
+  seatAvailableBorder: '#22C55E',
   seatSelected: '#22C55E',
   seatSelectedText: '#FFFFFF',
-  seatBooked: '#232D42',
-  seatBookedBorder: '#334155',
+  seatBooked: '#1F2937',
+  seatBookedBorder: '#374151',
+  seatSoldText: '#64748B',
   seatMale: '#38BDF8',
   seatMaleSoft: '#0C2A40',
   seatFemale: '#F472B6',
   seatFemaleSoft: '#3B182B',
   sleeperLength: '#172033',
+
+  // Promos & Badges
+  navyBanner: '#0B1426',
+  ratingGreen: '#22C55E',
+  ratingGreenSoft: '#143320',
+  pillCoral: '#3B182B',
+  pillCoralText: '#F87171',
 
   // Overlay & Backdrop
   backdrop: 'rgba(0, 0, 0, 0.75)',

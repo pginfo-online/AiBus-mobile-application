@@ -1,5 +1,4 @@
-import React from 'react';
-import { Text as RNText, TextProps as RNTextProps, TextStyle } from 'react-native';
+import { Text as RNText, TextProps as RNTextProps, TextStyle, StyleProp } from 'react-native';
 import { useAppTheme } from '../theme';
 import { TypographyVariant } from '../tokens/typography';
 
@@ -8,7 +7,7 @@ export interface AppTextProps extends RNTextProps {
   color?: string;
   align?: 'left' | 'center' | 'right';
   weight?: TextStyle['fontWeight'];
-  style?: TextStyle | TextStyle[];
+  style?: StyleProp<TextStyle>;
 }
 
 export const AppText: React.FC<AppTextProps> = ({

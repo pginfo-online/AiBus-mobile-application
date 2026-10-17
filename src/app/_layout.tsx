@@ -93,8 +93,7 @@ function RootNavigationLayout() {
         <Stack.Screen
           name="booking/boarding-dropping"
           options={{
-            title: 'Select Points',
-            headerShown: true,
+            headerShown: false,
           }}
         />
         <Stack.Screen

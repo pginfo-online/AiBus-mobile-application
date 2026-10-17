@@ -14,29 +14,26 @@ import * as Haptics from 'expo-haptics';
 import { useAppTheme } from '../../design-system/theme';
 import {
   AppText,
-  AppDivider,
   AppEmptyState,
   AppErrorState,
-  AppSectionHeader,
+  AppSkeleton,
 } from '../../design-system';
-import { useTranslation } from '../../core/localization';
-import { useCitiesQuery, POPULAR_CITIES } from '../../features/cities/useCitiesQuery';
+import { useCitiesQuery } from '../../features/cities/useCitiesQuery';
 import { useBookingStore, CitySelection } from '../../stores/bookingStore';
 
 export default function FromCityScreen() {
   const router = useRouter();
   const { colors, spacing, radii } = useAppTheme();
-  const { t } = useTranslation();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const setFromCity = useBookingStore((s) => s.setFromCity);
 
-  // 300ms Debounce to prevent unnecessary backend requests
+  // 200ms debounce for responsive autocomplete without excessive requests
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedQuery(searchQuery);
-    }, 300);
+    }, 200);
     return () => clearTimeout(handler);
   }, [searchQuery]);
 
@@ -59,88 +56,85 @@ export default function FromCityScreen() {
         styles.cityRow,
         {
           backgroundColor: colors.surface,
-          borderBottomColor: colors.divider,
-          opacity: pressed ? 0.75 : 1,
+          borderBottomColor: colors.border,
+          opacity: pressed ? 0.7 : 1,
         },
       ]}
       accessibilityRole="button"
-      accessibilityLabel={`Select city ${item.name}`}
+      accessibilityLabel={`Select origin city ${item.name}`}
     >
-      <View
-        style={[
-          styles.cityIconBox,
-          {
-            backgroundColor: colors.surfaceSecondary,
-            borderRadius: radii.md,
-          },
-        ]}
-      >
-        <Ionicons name="location-outline" size={20} color={colors.primary} />
+      <View style={styles.cityIconBox}>
+        <Ionicons name="business" size={22} color={colors.text} />
       </View>
-      <View style={{ marginLeft: spacing.md, flex: 1 }}>
-        <AppText variant="bodyLargeBold" style={{ color: colors.text }}>
+      <View style={{ marginLeft: spacing.base, flex: 1 }}>
+        <AppText variant="bodyLargeBold" style={[styles.cityName, { color: colors.text }]}>
           {item.name}
         </AppText>
-        <AppText variant="caption" style={{ color: colors.textSecondary, marginTop: 2 }}>
-          India
-        </AppText>
       </View>
-      <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
     </Pressable>
   );
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top']}>
-      {/* Header Search Bar */}
-      <View
-        style={[
-          styles.headerBar,
-          {
-            backgroundColor: colors.surface,
-            borderBottomColor: colors.border,
-          },
-        ]}
-      >
-        <Pressable
-          onPress={() => router.back()}
-          style={styles.backButton}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-        >
-          <Ionicons name="arrow-back" size={24} color={colors.text} />
-        </Pressable>
-
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.surface }]} edges={['top']}>
+      {/* 1. Top Search Header matching ref-2 and ref-3 */}
+      <View style={styles.searchHeaderWrapper}>
         <View
           style={[
-            styles.inputBox,
+            styles.pillSearchBar,
             {
               backgroundColor: colors.surfaceSecondary,
-              borderRadius: radii.md,
+              borderRadius: radii.full,
+              borderColor: colors.border,
             },
           ]}
         >
-          <Ionicons name="search" size={20} color={colors.textMuted} style={{ marginRight: 8 }} />
+          <Pressable
+            onPress={() => router.back()}
+            style={styles.backButton}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
+            <Ionicons name="arrow-back" size={22} color={colors.text} />
+          </Pressable>
+
           <TextInput
             autoFocus
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder={t('city.search_placeholder')}
+            placeholder="Search area"
             placeholderTextColor={colors.textMuted}
             style={[styles.textInput, { color: colors.text }]}
             returnKeyType="search"
+            clearButtonMode="while-editing"
           />
+
           {searchQuery.length > 0 && (
-            <Pressable onPress={() => setSearchQuery('')} hitSlop={10}>
-              <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+            <Pressable onPress={() => setSearchQuery('')} hitSlop={10} style={styles.clearButton}>
+              <Ionicons name="close-circle" size={20} color={colors.textMuted} />
             </Pressable>
           )}
         </View>
       </View>
 
-      {/* Content Area */}
-      {isLoading ? (
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
+      {/* 2. Section Header: Popular cities / Search results */}
+      <View style={styles.sectionHeaderBox}>
+        <AppText variant="heading3" style={[styles.sectionTitle, { color: colors.text }]}>
+          {debouncedQuery.trim().length > 0 ? 'Search results' : 'Popular cities'}
+        </AppText>
+      </View>
+
+      {/* 3. List Content */}
+      {isLoading && !cities ? (
+        <View style={{ paddingHorizontal: 16 }}>
+          {[1, 2, 3, 4, 5, 6].map((k) => (
+            <View key={k} style={styles.skeletonRow}>
+              <AppSkeleton width={26} height={26} borderRadius={6} />
+              <View style={{ marginLeft: 16, flex: 1 }}>
+                <AppSkeleton width={140} height={20} borderRadius={6} />
+              </View>
+            </View>
+          ))}
         </View>
       ) : isError ? (
         <AppErrorState
@@ -152,19 +146,14 @@ export default function FromCityScreen() {
           data={cities || []}
           keyExtractor={(item) => String(item.providerCityId || item.id)}
           renderItem={renderCityItem}
-          contentContainerStyle={{ paddingBottom: 32 }}
-          ListHeaderComponent={() =>
-            !debouncedQuery ? (
-              <View style={{ paddingHorizontal: spacing.base, paddingTop: spacing.md }}>
-                <AppSectionHeader title={t('city.popular')} />
-              </View>
-            ) : null
-          }
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
           ListEmptyComponent={() => (
             <AppEmptyState
-              icon={<Ionicons name="map-outline" size={38} color={colors.textMuted} />}
-              title={t('city.no_results')}
-              description="Check the spelling or try searching for another major city in India."
+              icon={<Ionicons name="location-outline" size={40} color={colors.textMuted} />}
+              title="No cities found"
+              description="Check the spelling or try searching for another city."
             />
           )}
         />
@@ -177,45 +166,66 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
-  headerBar: {
+  searchHeaderWrapper: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 12,
+  },
+  pillSearchBar: {
+    height: 48,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
+    paddingHorizontal: 14,
+    borderWidth: 1,
   },
   backButton: {
-    marginRight: 12,
-    padding: 4,
-  },
-  inputBox: {
-    flex: 1,
-    height: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
+    marginRight: 10,
+    padding: 2,
   },
   textInput: {
     flex: 1,
     height: '100%',
-    fontSize: 15,
+    fontSize: 16,
+    fontWeight: '400',
+  },
+  clearButton: {
+    padding: 4,
+  },
+  sectionHeaderBox: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 14,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  listContent: {
+    paddingBottom: 40,
   },
   cityRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   cityIconBox: {
-    width: 38,
-    height: 38,
-    justifyContent: 'center',
+    width: 28,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
+  cityName: {
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: -0.2,
+  },
+  skeletonRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#F1F5F9',
   },
 });

@@ -27,7 +27,7 @@ interface AuthState {
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isAuthenticated: false,
-  isBootstrapping: true,
+  isBootstrapping: false,
 
   setAuth: async (user, accessToken, refreshToken) => {
     await SecureTokenStorage.setAccessToken(accessToken);

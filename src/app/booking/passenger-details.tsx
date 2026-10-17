@@ -132,14 +132,7 @@ export default function PassengerDetailsScreen() {
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['bottom']}>
       {/* 1. Header Overview Bar */}
-      <View style={[styles.overviewBar, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-        <AppText variant="bodyLargeBold" style={{ color: colors.text }}>
-          {fromCity.name} → {toCity.name}
-        </AppText>
-        <AppText variant="caption" style={{ color: colors.textSecondary, marginTop: 2 }}>
-          {selectedBus?.CompanyName} • {selectedSeats.length} Seats ({selectedSeats.map((s) => s.seatNo).join(', ')})
-        </AppText>
-      </View>
+
 
       <ScrollView
         showsVerticalScrollIndicator={false}

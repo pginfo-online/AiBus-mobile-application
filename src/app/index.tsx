@@ -1,27 +1,13 @@
-import { useEffect } from 'react';
+import React from 'react';
 import { Redirect } from 'expo-router';
-import { useAuthStore } from '../stores/authStore';
-import { View, ActivityIndicator } from 'react-native';
-import { useAppTheme } from '../design-system/theme';
 
+/**
+ * App Entry Point — Immediate Guest Access
+ *
+ * Directs the user immediately to the Home screen without blocking on auth bootstrapping.
+ * Auth verification and token hydration happen asynchronously in the background via RootLayout,
+ * ensuring zero startup latency and no flashing loading indicators.
+ */
 export default function Index() {
-  const isBootstrapping = useAuthStore((s) => s.isBootstrapping);
-  const { colors } = useAppTheme();
-
-  if (isBootstrapping) {
-    return (
-      <View
-        style={{
-          flex: 1,
-          justifyContent: 'center',
-          alignItems: 'center',
-          backgroundColor: colors.background,
-        }}
-      >
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
-  }
-
   return <Redirect href={'/(tabs)/home' as any} />;
 }

@@ -17,6 +17,9 @@ export interface DroppingPoint {
   DropoffCode: string;
   DropoffName: string;
   DropoffTime: string;
+  Address?: string;
+  Landmark?: string;
+  Contact?: string;
 }
 
 export interface CancellationSlab {

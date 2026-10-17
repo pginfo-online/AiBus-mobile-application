@@ -48,6 +48,7 @@ interface BookingFlowState {
   fromCity: CitySelection;
   toCity: CitySelection;
   journeyDate: string; // YYYY-MM-DD
+  isWomenBooking: boolean;
 
   // Selection during booking flow
   selectedBus: any | null;
@@ -70,6 +71,7 @@ interface BookingFlowState {
   setFromCity: (city: CitySelection) => void;
   setToCity: (city: CitySelection) => void;
   setJourneyDate: (date: string) => void;
+  setIsWomenBooking: (isWomen: boolean) => void;
   swapCities: () => void;
   setSelectedBus: (bus: any) => void;
   toggleSeat: (seat: SelectedSeatItem) => boolean;
@@ -110,6 +112,7 @@ export const useBookingStore = create<BookingFlowState>((set, get) => ({
   fromCity: DEFAULT_FROM_CITY,
   toCity: DEFAULT_TO_CITY,
   journeyDate: getTodayString(),
+  isWomenBooking: false,
 
   selectedBus: null,
   selectedSeats: [],
@@ -129,6 +132,7 @@ export const useBookingStore = create<BookingFlowState>((set, get) => ({
   setFromCity: (city) => set({ fromCity: city }),
   setToCity: (city) => set({ toCity: city }),
   setJourneyDate: (date) => set({ journeyDate: date }),
+  setIsWomenBooking: (isWomen) => set({ isWomenBooking: isWomen }),
 
   swapCities: () => {
     const { fromCity, toCity } = get();
