@@ -1,12 +1,14 @@
 export interface RazorpayCheckoutResult {
   success: boolean;
-  status: 'SUCCESS' | 'CANCELLED' | 'FAILED';
+  status: 'SUCCESS' | 'CANCELLED' | 'FAILED' | 'PENDING' | 'BOOKING_FAILED' | 'BOOKING_UNKNOWN';
   gatewayPaymentId?: string;
   gatewayOrderId?: string;
   gatewaySignature?: string;
   merchantTxnId: string;
   errorCode?: string;
   errorDescription?: string;
+  bookingStatus?: string;
+  message?: string;
 }
 
 /**
@@ -29,7 +31,7 @@ export function parseRazorpayCallbackParams(
   const gatewayOrderId = String(params.gatewayOrderId || params.razorpay_order_id || '');
   const gatewayPaymentId = String(params.gatewayPaymentId || params.razorpay_payment_id || '');
   const gatewaySignature = String(params.gatewaySignature || params.razorpay_signature || '');
-  const reason = params.reason || params.errorDescription;
+  const reason = params.reason || params.errorDescription || params.message;
 
   if (statusParam === 'SUCCESS' || (gatewayPaymentId && gatewaySignature)) {
     return {
@@ -39,6 +41,28 @@ export function parseRazorpayCallbackParams(
       gatewayOrderId: gatewayOrderId || undefined,
       gatewayPaymentId: gatewayPaymentId || undefined,
       gatewaySignature: gatewaySignature || undefined,
+    };
+  }
+
+  if (statusParam === 'BOOKING_FAILED') {
+    return {
+      success: false,
+      status: 'BOOKING_FAILED',
+      merchantTxnId: String(params.merchantTxnId || merchantTxnId),
+      gatewayOrderId: gatewayOrderId || undefined,
+      gatewayPaymentId: gatewayPaymentId || undefined,
+      errorDescription: reason ? String(reason) : 'Seat confirmation failed with operator.',
+    };
+  }
+
+  if (statusParam === 'BOOKING_UNKNOWN') {
+    return {
+      success: false,
+      status: 'BOOKING_UNKNOWN',
+      merchantTxnId: String(params.merchantTxnId || merchantTxnId),
+      gatewayOrderId: gatewayOrderId || undefined,
+      gatewayPaymentId: gatewayPaymentId || undefined,
+      errorDescription: reason ? String(reason) : 'Seat confirmation with operator in progress.',
     };
   }
 

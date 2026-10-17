@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../core/api/client';
-import { BookingResponseData } from '../../types/api';
+import { BookingResponseData, TicketResponseData } from '../../types/api';
 
 export type PaymentGatewayType = 'RAZORPAY' | 'PHONEPE' | 'AUTO';
 export type PaymentModeType = 'UPI' | 'CARD' | 'NETBANKING' | 'WALLET' | 'ALL';
@@ -50,14 +50,17 @@ export interface VerifyPaymentPayload {
 }
 
 export interface VerifyPaymentResponse {
-  status: 'SUCCESS' | 'FAILED' | 'PENDING';
+  status: 'SUCCESS' | 'FAILED' | 'PENDING' | 'BOOKING_FAILED' | 'BOOKING_UNKNOWN';
+  message?: string;
   payment: {
     id: string;
     status: string;
     gateway?: string;
     amount?: number;
+    gatewayPaymentId?: string;
   };
   booking: BookingResponseData;
+  ticket?: TicketResponseData;
 }
 
 export function useCreatePaymentIntentMutation() {

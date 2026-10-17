@@ -11,6 +11,14 @@ export function useTicketQuery(bookingId?: string | null) {
       return res.data?.data;
     },
     enabled: Boolean(bookingId),
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      // If ticket is not yet confirmed/issued, poll every 1500ms
+      if (!data || !data.ticketNumber || data.status !== 'ISSUED') {
+        return 1500;
+      }
+      return false; // Stop polling once ticket is confirmed and ISSUED
+    },
+    staleTime: 60 * 1000,
   });
 }

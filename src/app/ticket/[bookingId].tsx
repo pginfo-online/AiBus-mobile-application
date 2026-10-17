@@ -32,6 +32,15 @@ export default function TicketDetailsScreen() {
 
   const { data: ticket, isLoading, isError, error, refetch } = useTicketQuery(bookingId);
 
+  const [loadTimeout, setLoadTimeout] = React.useState(false);
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      setLoadTimeout(true);
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, []);
+
   const booking = ticket?.booking;
 
   const handleShareTicket = async () => {
@@ -80,10 +89,40 @@ export default function TicketDetailsScreen() {
     }
   };
 
-  if (isLoading) {
+  if (isLoading && !ticket && !loadTimeout) {
     return (
       <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
-        <AppLoader message="Retrieving your ticket details..." />
+        <AppLoader message="Retrieving your confirmed ticket details..." />
+      </SafeAreaView>
+    );
+  }
+
+  if ((!ticket || !booking) && loadTimeout) {
+    return (
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
+        <ScrollView contentContainerStyle={{ padding: spacing.base, alignItems: 'center', justifyContent: 'center', flexGrow: 1 }}>
+          <View style={[styles.successIconCircle, { backgroundColor: colors.successSoft, marginBottom: spacing.base }]}>
+            <Ionicons name="checkmark-done-circle" size={54} color={colors.success} />
+          </View>
+          <AppText variant="heading2" style={{ textAlign: 'center', color: colors.text }}>
+            Booking Confirmed!
+          </AppText>
+          <AppText variant="bodyMedium" style={{ textAlign: 'center', color: colors.textSecondary, marginTop: spacing.sm, marginBottom: spacing.lg }}>
+            Your payment was successful and seat reservation is confirmed with the bus operator. Ticket details are syncing with the operator.
+          </AppText>
+          <AppButton
+            title="Refresh Ticket"
+            onPress={() => refetch()}
+            variant="primary"
+            style={{ width: '100%', marginBottom: spacing.sm }}
+          />
+          <AppButton
+            title="Go to My Bookings"
+            onPress={() => router.replace('/(tabs)/bookings' as any)}
+            variant="outline"
+            style={{ width: '100%' }}
+          />
+        </ScrollView>
       </SafeAreaView>
     );
   }

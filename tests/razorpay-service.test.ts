@@ -79,3 +79,37 @@ test('parseRazorpayCallbackParams handles undefined/empty params gracefully', ()
   assert.strictEqual(result.merchantTxnId, 'RZP-EMPTY');
   assert.ok(result.errorDescription?.includes('No transaction parameters'));
 });
+
+test('parseRazorpayCallbackParams handles BOOKING_FAILED scenario', () => {
+  const result = parseRazorpayCallbackParams(
+    {
+      status: 'BOOKING_FAILED',
+      merchantTxnId: 'RZP-BKG-FAIL-1',
+      gatewayPaymentId: 'pay_12345',
+      message: 'Seats unavailable with provider',
+    },
+    'RZP-BKG-FAIL-1'
+  );
+
+  assert.strictEqual(result.success, false);
+  assert.strictEqual(result.status, 'BOOKING_FAILED');
+  assert.strictEqual(result.gatewayPaymentId, 'pay_12345');
+  assert.strictEqual(result.errorDescription, 'Seats unavailable with provider');
+});
+
+test('parseRazorpayCallbackParams handles BOOKING_UNKNOWN scenario', () => {
+  const result = parseRazorpayCallbackParams(
+    {
+      status: 'BOOKING_UNKNOWN',
+      merchantTxnId: 'RZP-BKG-UNK-1',
+      gatewayPaymentId: 'pay_67890',
+      message: 'Provider timeout, reconciliation in progress',
+    },
+    'RZP-BKG-UNK-1'
+  );
+
+  assert.strictEqual(result.success, false);
+  assert.strictEqual(result.status, 'BOOKING_UNKNOWN');
+  assert.strictEqual(result.gatewayPaymentId, 'pay_67890');
+  assert.strictEqual(result.errorDescription, 'Provider timeout, reconciliation in progress');
+});

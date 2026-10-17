@@ -10,7 +10,6 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import * as WebBrowser from 'expo-web-browser';
 import { useAppTheme } from '../../design-system/theme';
 import {
   AppText,
@@ -171,71 +170,46 @@ export default function PaymentScreen() {
         gatewayOrderId: intentRes.gatewayOrderId,
       });
 
-      // 3. Gateway Processing based on resolved gateway
-      if (intentRes.gateway === 'RAZORPAY') {
-        // Official Razorpay Checkout Flow (Live Credentials)
-        const checkoutResult = await RazorpayService.openCheckout(intentRes);
+      // 3. Official Razorpay Checkout Flow (Live Credentials)
+      const checkoutResult = await RazorpayService.openCheckout(intentRes);
 
-        if (checkoutResult.status === 'SUCCESS' && checkoutResult.gatewayPaymentId) {
-          // Update storage with verified credentials
-          await PendingPaymentStorage.set({
-            bookingId: activeBookingId,
-            merchantTxnId: checkoutResult.merchantTxnId,
-            amount: intentRes.amount,
-            timestamp: Date.now(),
-            gateway: 'RAZORPAY',
-            gatewayOrderId: checkoutResult.gatewayOrderId,
-            gatewayPaymentId: checkoutResult.gatewayPaymentId,
-            gatewaySignature: checkoutResult.gatewaySignature,
-          });
+      if (checkoutResult.status === 'SUCCESS' && checkoutResult.gatewayPaymentId) {
+        // Update storage with verified credentials
+        await PendingPaymentStorage.set({
+          bookingId: activeBookingId,
+          merchantTxnId: checkoutResult.merchantTxnId,
+          amount: intentRes.amount,
+          timestamp: Date.now(),
+          gateway: 'RAZORPAY',
+          gatewayOrderId: checkoutResult.gatewayOrderId,
+          gatewayPaymentId: checkoutResult.gatewayPaymentId,
+          gatewaySignature: checkoutResult.gatewaySignature,
+        });
 
-          // Navigate directly to server-side verification screen
-          router.push({
-            pathname: '/booking/processing' as any,
-            params: {
-              bookingId: activeBookingId,
-              merchantTxnId: checkoutResult.merchantTxnId,
-              amount: String(intentRes.amount),
-              gatewayOrderId: checkoutResult.gatewayOrderId || '',
-              gatewayPaymentId: checkoutResult.gatewayPaymentId || '',
-              gatewaySignature: checkoutResult.gatewaySignature || '',
-            },
-          });
-        } else if (checkoutResult.status === 'CANCELLED') {
-          Alert.alert(
-            'Payment Incomplete',
-            t('payment.cancelled'),
-            [{ text: 'OK' }]
-          );
-        } else {
-          Alert.alert(
-            'Payment Failed',
-            checkoutResult.errorDescription || t('payment.failed'),
-            [{ text: 'Try Again' }]
-          );
-        }
-      } else {
-        // PhonePe Gateway Flow
-        if (intentRes.paymentUrl) {
-          try {
-            await WebBrowser.openAuthSessionAsync(
-              intentRes.paymentUrl,
-              'aibus://payment-result'
-            );
-          } catch {
-            await WebBrowser.openBrowserAsync(intentRes.paymentUrl).catch(() => {});
-          }
-        }
-
-        // Navigate to processing screen to poll/verify PhonePe status
+        // Navigate directly to server-side verification screen
         router.push({
           pathname: '/booking/processing' as any,
           params: {
             bookingId: activeBookingId,
-            merchantTxnId: intentRes.merchantTxnId,
+            merchantTxnId: checkoutResult.merchantTxnId,
             amount: String(intentRes.amount),
+            gatewayOrderId: checkoutResult.gatewayOrderId || '',
+            gatewayPaymentId: checkoutResult.gatewayPaymentId || '',
+            gatewaySignature: checkoutResult.gatewaySignature || '',
           },
         });
+      } else if (checkoutResult.status === 'CANCELLED') {
+        Alert.alert(
+          'Payment Incomplete',
+          t('payment.cancelled'),
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert(
+          'Payment Failed',
+          checkoutResult.errorDescription || t('payment.failed'),
+          [{ text: 'Try Again' }]
+        );
       }
     } catch (err: any) {
       Alert.alert(

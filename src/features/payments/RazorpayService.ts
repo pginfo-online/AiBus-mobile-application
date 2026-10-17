@@ -26,23 +26,46 @@ export const RazorpayService = {
   ): Promise<RazorpayCheckoutResult> {
     const redirectUrl = options?.redirectUrl || 'aibus://payment-result';
 
-    // 1. Check if native react-native-razorpay module is linked and available in binary
-    const nativeModule =
-      NativeModules.RNPPaymentOnboardingModule || NativeModules.RazorpayCheckout;
+    // 1. Check if official native react-native-razorpay module is linked and available
+    const hasNativeModule =
+      Platform.OS !== 'web' &&
+      Boolean(
+        NativeModules.RNRazorpayCheckout ||
+        NativeModules.RazorpayEventEmitter ||
+        (globalThis as any).RazorpayCheckoutModule
+      );
 
-    if (nativeModule && Platform.OS !== 'web') {
+    if (hasNativeModule) {
       try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
         const nativeRazorpay = require('react-native-razorpay');
         const RazorpayCheckout = nativeRazorpay.default || nativeRazorpay;
 
         if (RazorpayCheckout?.open && intent.sdkPayload) {
-          const nativeOptions = {
+          const prefill = (intent.sdkPayload.prefill as any) || {};
+          const nativeOptions: Record<string, any> = {
             ...intent.sdkPayload,
             key: intent.sdkPayload.key,
             order_id: intent.gatewayOrderId || intent.sdkPayload.order_id,
-            amount: intent.sdkPayload.amount,
+            amount: intent.sdkPayload.amount || Math.round(intent.amount * 100),
             name: intent.sdkPayload.name || AppConfig.appName,
+            description: intent.sdkPayload.description || `Bus Booking #${intent.merchantTxnId}`,
             currency: intent.currency || 'INR',
+            prefill: {
+              name: prefill.name || '',
+              email: prefill.email || '',
+              contact: prefill.contact || '',
+            },
+            theme: {
+              color: '#013C9A',
+            },
+            modal: {
+              confirm_close: true,
+            },
+            notes: {
+              bookingId: (intent.sdkPayload.notes as any)?.bookingId || '',
+              merchantTxnId: intent.merchantTxnId,
+            },
           };
 
           const nativeData = await RazorpayCheckout.open(nativeOptions);
@@ -58,9 +81,14 @@ export const RazorpayService = {
       } catch (nativeErr: any) {
         // Native module error or user cancellation
         const code = nativeErr?.code;
-        const description = nativeErr?.description || nativeErr?.message;
+        const description = String(nativeErr?.description || nativeErr?.message || '');
+        const isCancelled =
+          code === 0 ||
+          code === 'PAYMENT_CANCELLED' ||
+          description.toLowerCase().includes('cancel') ||
+          description.toLowerCase().includes('dismiss');
 
-        if (code === 0 || code === 'PAYMENT_CANCELLED' || description?.includes('cancelled')) {
+        if (isCancelled) {
           return {
             success: false,
             status: 'CANCELLED',
@@ -69,8 +97,19 @@ export const RazorpayService = {
           };
         }
 
-        // If native module was not truly configured, fall through to in-app hosted checkout
-        console.warn('Native Razorpay invocation failed, attempting in-app checkout fallback:', nativeErr);
+        // Genuine payment decline or bank error from native SDK
+        if (code !== undefined && code !== null && !description.includes('null') && !description.includes('undefined')) {
+          return {
+            success: false,
+            status: 'FAILED',
+            merchantTxnId: intent.merchantTxnId,
+            errorCode: String(code),
+            errorDescription: description || 'Payment was declined by issuing bank.',
+          };
+        }
+
+        // If native module was not truly compiled in this binary (e.g. running in Expo Go or dev web), fall through to in-app hosted checkout
+        console.warn('Native Razorpay invocation unavailable, falling back to in-app secure checkout:', nativeErr);
       }
     }
 

@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClientProvider } from '@tanstack/react-query';
@@ -11,17 +12,33 @@ import { useAuthStore } from '../stores/authStore';
 import { useAppStore } from '../stores/appStore';
 import { PendingPaymentStorage } from '../core/storage';
 
+// Keep the splash screen visible while app initializes
+SplashScreen.preventAutoHideAsync().catch(() => {});
+
 function RootNavigationLayout() {
   const { colors, isDark } = useAppTheme();
   const bootstrapAuth = useAuthStore((s) => s.bootstrapAuth);
 
   useEffect(() => {
-    bootstrapAuth();
+    bootstrapAuth().finally(() => {
+      SplashScreen.hideAsync().catch(() => {});
+    });
+
+    // Fallback timer to guarantee splash screen is hidden
+    const timer = setTimeout(() => {
+      SplashScreen.hideAsync().catch(() => {});
+    }, 500);
+
+    // Check pending payment recovery on launch (Scenario 6: App Interruption / Crash Recovery)
     PendingPaymentStorage.get().then((pending) => {
-      if (pending && PendingPaymentStorage.isExpired(pending)) {
-        PendingPaymentStorage.clear();
+      if (pending) {
+        if (PendingPaymentStorage.isExpired(pending)) {
+          PendingPaymentStorage.clear();
+        }
       }
     });
+
+    return () => clearTimeout(timer);
   }, [bootstrapAuth]);
 
   return (
@@ -119,6 +136,13 @@ function RootNavigationLayout() {
         />
         <Stack.Screen
           name="booking/processing"
+          options={{
+            headerShown: false,
+            gestureEnabled: false,
+          }}
+        />
+        <Stack.Screen
+          name="payment-result"
           options={{
             headerShown: false,
             gestureEnabled: false,

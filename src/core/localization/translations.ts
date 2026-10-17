@@ -110,6 +110,12 @@ export const translations: Record<SupportedLanguage, Record<string, string>> = {
     'payment.failed': 'Payment failed. Any amount debited will be refunded automatically within 5-7 business days.',
     'payment.verifying_gateway': 'Connecting to payment gateway...',
     'payment.confirming_ticket': 'Payment received! Confirming your bus ticket...',
+    'payment.booking_failed_title': 'Seat Confirmation Failed',
+    'payment.booking_failed_desc': 'Your payment was successful, but the bus operator could not allocate the selected seats. A 100% full refund has been initiated to your account.',
+    'payment.booking_unknown_title': 'Seat Confirmation In Progress',
+    'payment.booking_unknown_desc': 'Your payment is secured! We are confirming your seats with the bus operator. Please do not re-book or pay again.',
+    'payment.network_error_title': 'Network Connection Issue',
+    'payment.network_error_desc': 'Could not verify payment due to network disruption. If money was debited, your seats are reserved and your ticket will be confirmed once reconnected.',
 
     // Ticket & Bookings
     'ticket.title': 'Booking Confirmed!',
@@ -256,6 +262,12 @@ export const translations: Record<SupportedLanguage, Record<string, string>> = {
     'payment.failed': 'भुगतान विफल रहा। काटा गया कोई भी पैसा 5-7 कार्य दिवसों में स्वतः वापस कर दिया जाएगा।',
     'payment.verifying_gateway': 'पेमेंट गेटवे से कनेक्ट हो रहा है...',
     'payment.confirming_ticket': 'भुगतान प्राप्त हुआ! आपका बस टिकट कन्फ़र्म किया जा रहा है...',
+    'payment.booking_failed_title': 'सीट कन्फर्मेशन विफल रहा',
+    'payment.booking_failed_desc': 'आपका भुगतान सफल रहा, लेकिन बस ऑपरेटर चयनित सीटें आवंटित नहीं कर सका। आपके खाते में 100% पूरा रिफंड शुरू कर दिया गया है।',
+    'payment.booking_unknown_title': 'सीट कन्फर्मेशन प्रगति पर है',
+    'payment.booking_unknown_desc': 'आपका भुगतान सुरक्षित है! हम बस ऑपरेटर के साथ आपकी सीटों की पुष्टि कर रहे हैं। कृपया दोबारा बुकिंग या भुगतान न करें।',
+    'payment.network_error_title': 'नेटवर्क कनेक्शन समस्या',
+    'payment.network_error_desc': 'नेटवर्क में रुकावट के कारण भुगतान की पुष्टि नहीं हो सकी। यदि पैसे कट गए हैं, तो आपकी सीटें सुरक्षित हैं।',
 
     // Ticket & Bookings
     'ticket.title': 'बुकिंग सफल रही!',
@@ -402,6 +414,12 @@ export const translations: Record<SupportedLanguage, Record<string, string>> = {
     'payment.failed': 'पेमेंट अयशस्वी झाले. कापलेली रक्कम 5-7 कामकाजाच्या दिवसांत परत केली जाईल.',
     'payment.verifying_gateway': 'पेमेंट गेटवेशी संपर्क साधला जात आहे...',
     'payment.confirming_ticket': 'पेमेंट मिळाले! तुमचे बस तिकीट कन्फर्म केले जात आहे...',
+    'payment.booking_failed_title': 'जागा कन्फर्मेशन अयशस्वी',
+    'payment.booking_failed_desc': 'तुमचे पेमेंट यशस्वी झाले, परंतु बस ऑपरेटर निवडलेल्या जागा वाटप करू शकला नाही. तुमच्या खात्यात 100% पूर्ण परतावा सुरू करण्यात आला आहे.',
+    'payment.booking_unknown_title': 'जागा कन्फर्मेशन प्रगतीपथावर आहे',
+    'payment.booking_unknown_desc': 'तुमचे पेमेंट सुरक्षित आहे! आम्ही बस ऑपरेटरसह तुमच्या जागांची खात्री करत आहोत. कृपया पुन्हा बुकिंग किंवा पेमेंट करू नका.',
+    'payment.network_error_title': 'नेटवर्क कनेक्शन समस्या',
+    'payment.network_error_desc': 'नेटवर्कच्या समस्येमुळे पेमेंटची पडताळणी होऊ शकली नाही. पैसे कापले गेले असल्यास, पुन्हा कनेक्ट झाल्यावर तिकीट दिले जाईल.',
 
     // Ticket & Bookings
     'ticket.title': 'बुकिंग यशस्वी!',

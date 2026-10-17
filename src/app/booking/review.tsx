@@ -8,6 +8,7 @@ import {
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useAppTheme } from '../../design-system/theme';
 import {
   AppText,
@@ -18,16 +19,22 @@ import {
 } from '../../design-system';
 import { useTranslation } from '../../core/localization';
 import { useBookingStore } from '../../stores/bookingStore';
+import { useAuthStore } from '../../stores/authStore';
 import {
   useHoldSeatsMutation,
   useCreateBookingMutation,
 } from '../../features/booking/useBookingMutations';
+import { useCreatePaymentIntentMutation } from '../../features/payments/usePaymentMutations';
+import { RazorpayService } from '../../features/payments/RazorpayService';
+import { PendingPaymentStorage } from '../../core/storage';
 import { DomainError } from '../../core/errors';
 
 export default function ReviewBookingScreen() {
   const router = useRouter();
   const { colors, spacing, radii, shadows } = useAppTheme();
   const { t } = useTranslation();
+
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   const {
     fromCity,
@@ -51,6 +58,7 @@ export default function ReviewBookingScreen() {
 
   const holdMutation = useHoldSeatsMutation();
   const createBookingMutation = useCreateBookingMutation();
+  const createPaymentIntentMutation = useCreatePaymentIntentMutation();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -60,6 +68,22 @@ export default function ReviewBookingScreen() {
   const taxes = selectedSeats.reduce((sum, s) => sum + s.tax, 0);
 
   const handleConfirmAndPay = async () => {
+    // 1. Enforce Authentication Before Payment (Requirement: Must be logged in)
+    if (!isAuthenticated) {
+      Alert.alert(
+        'Login Required',
+        'Please sign in or create an account to proceed with your booking and secure your tickets.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Log In',
+            onPress: () => router.push('/(auth)/login' as any),
+          },
+        ]
+      );
+      return;
+    }
+
     if (!selectedBoardingPoint || !selectedDroppingPoint) {
       Alert.alert('Missing Information', 'Boarding or Dropping point is missing.');
       return;
@@ -68,7 +92,13 @@ export default function ReviewBookingScreen() {
     setIsSubmitting(true);
 
     try {
-      // 1. Acquire or reuse valid Seat Hold from backend & upstream provider
+      try {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      } catch {
+        // Safe fallback
+      }
+
+      // 2. Acquire or reuse valid Seat Hold from backend & upstream provider
       let holdId = activeHold?.id;
       let effectiveTotalFare = activeHold?.totalFare || totalFare;
 
@@ -115,8 +145,9 @@ export default function ReviewBookingScreen() {
         });
       }
 
-      // 2. Create Booking record in status HELD (or reuse active booking if already initiated)
-      if (!activeBookingId) {
+      // 3. Create or reuse Booking record
+      let targetBookingId = activeBookingId;
+      if (!targetBookingId) {
         const bookingRes = await createBookingMutation.mutateAsync({
           holdId: holdId || undefined,
           fromCityId: fromCity.providerCityId,
@@ -144,16 +175,68 @@ export default function ReviewBookingScreen() {
           cancellationPolicy: selectedBus.CancellationPolicy,
         });
 
+        targetBookingId = bookingRes.id;
         setActiveBooking(bookingRes.id, bookingRes.bookingNumber);
       }
 
-      // 3. Advance to Payment Screen
-      router.push('/booking/payment' as any);
+      // 4. Directly initiate Razorpay payment (no intermediate screen)
+      const intentRes = await createPaymentIntentMutation.mutateAsync({
+        bookingId: targetBookingId,
+        gateway: 'RAZORPAY',
+      });
+
+      // Persist pending payment state for recovery
+      await PendingPaymentStorage.set({
+        bookingId: targetBookingId,
+        merchantTxnId: intentRes.merchantTxnId,
+        gatewayOrderId: intentRes.gatewayOrderId,
+        amount: intentRes.amount,
+        timestamp: Date.now(),
+        gateway: 'RAZORPAY',
+      });
+
+      // 5. Launch official Razorpay Checkout sheet directly
+      const checkoutResult = await RazorpayService.openCheckout(intentRes);
+
+      if (checkoutResult.status === 'SUCCESS' && checkoutResult.gatewayPaymentId) {
+        await PendingPaymentStorage.set({
+          bookingId: targetBookingId,
+          merchantTxnId: checkoutResult.merchantTxnId,
+          amount: intentRes.amount,
+          timestamp: Date.now(),
+          gateway: 'RAZORPAY',
+          gatewayOrderId: checkoutResult.gatewayOrderId,
+          gatewayPaymentId: checkoutResult.gatewayPaymentId,
+          gatewaySignature: checkoutResult.gatewaySignature,
+        });
+
+        router.push({
+          pathname: '/booking/processing' as any,
+          params: {
+            bookingId: targetBookingId,
+            merchantTxnId: intentRes.merchantTxnId,
+            gatewayOrderId: checkoutResult.gatewayOrderId || '',
+            gatewayPaymentId: checkoutResult.gatewayPaymentId || '',
+            gatewaySignature: checkoutResult.gatewaySignature || '',
+            amount: String(intentRes.amount),
+          },
+        });
+      } else if (checkoutResult.status === 'CANCELLED') {
+        Alert.alert(
+          'Payment Cancelled',
+          'Your seat hold is still active for a few minutes. Tap Proceed to Pay whenever you are ready to retry.'
+        );
+      } else if (checkoutResult.status === 'FAILED') {
+        Alert.alert(
+          'Payment Failed',
+          checkoutResult.errorDescription || 'Payment was declined by your bank. Please retry or use another UPI app.'
+        );
+      }
     } catch (err: any) {
       const errorMsg =
         err instanceof DomainError
           ? err.message
-          : err?.response?.data?.error?.message || err?.message || 'Failed to hold seats. Please try again.';
+          : err?.response?.data?.error?.message || err?.message || 'Failed to process booking. Please try again.';
 
       Alert.alert('Unable to Proceed', errorMsg, [
         {

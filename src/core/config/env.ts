@@ -9,10 +9,7 @@ import { Platform } from 'react-native';
 // - iOS Simulator uses localhost or local LAN IP
 // - Physical devices use LAN IP (e.g. 192.168.1.X)
 const getDevApiBaseUrl = (): string => {
-  if (Platform.OS === 'android') {
-    return 'http://aibus.shop/api/v1';
-  }
-  return 'http://aibus.shop/api/v1';
+  return 'https://aibus.shop/api/v1';
 };
 
 export const AppConfig = {
