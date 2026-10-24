@@ -22,6 +22,11 @@ import {
 import { useTranslation } from '../../core/localization';
 import { useBookingStore, PassengerItem } from '../../stores/bookingStore';
 import { useAuthStore } from '../../stores/authStore';
+import {
+  useHoldSeatsMutation,
+  useCreateCheckoutSessionMutation,
+} from '../../features/booking/useBookingMutations';
+import { PendingPaymentStorage } from '../../core/storage';
 
 export default function PassengerDetailsScreen() {
   const router = useRouter();
@@ -33,12 +38,21 @@ export default function PassengerDetailsScreen() {
   const {
     fromCity,
     toCity,
+    journeyDate,
     selectedBus,
     selectedSeats,
+    selectedBoardingPoint,
+    selectedDroppingPoint,
+    setActiveHold,
+    setActiveBooking,
     setPassengers,
     setContactInfo,
     setGstDetails,
   } = useBookingStore();
+
+  const holdMutation = useHoldSeatsMutation();
+  const checkoutSessionMutation = useCreateCheckoutSessionMutation();
+  const [isLockingSeats, setIsLockingSeats] = useState(false);
 
   // Initialize passenger list per selected seat
   const [passengerForms, setPassengerForms] = useState<PassengerItem[]>(() => {
@@ -126,7 +140,112 @@ export default function PassengerDetailsScreen() {
       setGstDetails(undefined, undefined);
     }
 
-    router.push('/booking/review' as any);
+    // Early Lock: Hold seats on GDS and pre-create checkout session before mounting Review
+    const lockSeatsAndProceed = async () => {
+      setIsLockingSeats(true);
+      try {
+        const holdRes = await holdMutation.mutateAsync({
+          fromCityId: fromCity.providerCityId,
+          toCityId: toCity.providerCityId,
+          journeyDate,
+          busId: selectedBus.RouteBusId || selectedBus.BusId,
+          pickupId: selectedBoardingPoint?.code || '',
+          dropoffId: selectedDroppingPoint?.code || '',
+          contactInfo: {
+            customerName: contactName || passengerForms[0].name,
+            email: contactEmail.trim().toLowerCase(),
+            phone: contactPhone.trim(),
+            mobile: contactPhone.trim(),
+          },
+          gstDetails: hasGst && gstin ? { gstin: gstin.trim().toUpperCase(), gstCompany: gstCompany.trim() } : undefined,
+          passengers: passengerForms.map((p) => ({
+            seatNo: p.seatNo,
+            seatTypeId: p.seatTypeId,
+            fare: p.fare,
+            gender: p.gender,
+            age: p.age,
+            name: p.name,
+            isAcSeat: p.isAcSeat,
+          })),
+        });
+
+        setActiveHold({
+          id: holdRes.id,
+          providerHoldId: holdRes.providerHoldId,
+          expiresAt: holdRes.expiresAt,
+          ttlSeconds: holdRes.ttlSeconds || 600,
+          totalFare: holdRes.totalFare || selectedSeats.reduce((sum, s) => sum + s.fare, 0),
+        });
+
+        // Pre-create checkout session for instantaneous Razorpay launch on Review
+        const baseFare = selectedSeats.reduce((sum, s) => sum + s.baseFare, 0);
+        const serviceTax = selectedSeats.reduce((sum, s) => sum + s.tax, 0);
+        const totalFare = holdRes.totalFare || selectedSeats.reduce((sum, s) => sum + s.fare, 0);
+
+        try {
+          const sessionRes = await checkoutSessionMutation.mutateAsync({
+            holdId: holdRes.id,
+            fromCityId: fromCity.providerCityId,
+            toCityId: toCity.providerCityId,
+            fromCityName: fromCity.name,
+            toCityName: toCity.name,
+            journeyDate,
+            busId: selectedBus.RouteBusId || selectedBus.BusId,
+            tripId: selectedBus.TripId || 'TRIP-DEFAULT',
+            pickupCode: selectedBoardingPoint?.code || '',
+            pickupLocation: selectedBoardingPoint?.name || '',
+            pickupTime: selectedBoardingPoint?.time || '',
+            dropoffCode: selectedDroppingPoint?.code || '',
+            dropoffLocation: selectedDroppingPoint?.name || '',
+            dropoffTime: selectedDroppingPoint?.time || '',
+            operatorName: selectedBus.CompanyName,
+            busType: selectedBus.BusTypeName,
+            totalFare,
+            baseFare,
+            serviceTax,
+            contactName: contactName || passengerForms[0].name,
+            contactEmail: contactEmail.trim().toLowerCase(),
+            contactPhone: contactPhone.trim(),
+            passengers: passengerForms,
+            cancellationPolicy: selectedBus.CancellationPolicy,
+            gateway: 'RAZORPAY',
+            paymentMode: 'UPI',
+          });
+
+          setActiveBooking(sessionRes.booking.id, sessionRes.booking.bookingNumber);
+
+          await PendingPaymentStorage.set({
+            bookingId: sessionRes.booking.id,
+            merchantTxnId: sessionRes.paymentIntent.merchantTxnId,
+            gatewayOrderId: sessionRes.paymentIntent.gatewayOrderId,
+            amount: sessionRes.paymentIntent.amount,
+            timestamp: Date.now(),
+            gateway: 'RAZORPAY',
+          });
+        } catch (sessionErr) {
+          console.warn('Checkout session pre-generation will fallback on Review:', sessionErr);
+        }
+
+        router.push('/booking/review' as any);
+      } catch (err: any) {
+        console.error('Seat hold error:', err);
+        Alert.alert(
+          'Seats Unavailable',
+          err.message || 'The selected seat(s) could not be reserved. Another traveler may have just booked them. Please select different seats.',
+          [
+            {
+              text: 'Choose Other Seats',
+              onPress: () => router.navigate('/booking/seat-map' as any),
+            },
+            { text: 'Cancel', style: 'cancel' },
+          ]
+        );
+      } finally {
+        setIsLockingSeats(false);
+      }
+    };
+
+    lockSeatsAndProceed();
   };
 
   return (
@@ -321,11 +440,12 @@ export default function PassengerDetailsScreen() {
         ]}
       >
         <AppButton
-          title={t('passenger.proceed_review')}
+          title={isLockingSeats ? 'Securing Seats...' : t('passenger.proceed_review')}
           onPress={handleProceed}
           variant="primary"
           size="lg"
           fullWidth
+          loading={isLockingSeats}
           icon={<Ionicons name="checkmark-done" size={20} color="#FFFFFF" />}
         />
       </View>

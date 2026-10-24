@@ -2,13 +2,22 @@
   "expo": {
     "name": "AiBus",
     "slug": "aibus",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "aibus",
     "userInterfaceStyle": "automatic",
     "primaryColor": "#013C9A",
     "description": "AiBus - Smart local bus ticket booking network across India.",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/0f3fe511-37f1-4289-b155-38ddda01238f",
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
     "ios": {
       "bundleIdentifier": "com.worknai.aibus",
       "buildNumber": "1",
@@ -20,7 +29,7 @@
     },
     "android": {
       "package": "com.worknai.aibus",
-      "versionCode": 1,
+      "versionCode": 4,
       "permissions": [
         "INTERNET"
       ],
@@ -38,6 +47,7 @@
     },
     "plugins": [
       "expo-router",
+      "expo-updates",
       "./plugins/withPhonePe.ts",
       "./plugins/withRazorpay.ts",
       [

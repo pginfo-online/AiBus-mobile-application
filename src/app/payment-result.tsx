@@ -1,33 +1,48 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { StyleSheet, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppTheme } from '../design-system/theme';
 import { AppText } from '../design-system';
 import { parseRazorpayCallbackParams } from '../features/payments/razorpayHelper';
+import { PaymentCoordinator } from '../features/payments/PaymentCoordinator';
 import { PendingPaymentStorage } from '../core/storage';
 
 export default function PaymentResultScreen() {
   const router = useRouter();
   const { colors, spacing } = useAppTheme();
   const params = useLocalSearchParams<Record<string, string>>();
+  const hasExecutedRef = useRef(false);
 
   useEffect(() => {
     let isMounted = true;
 
     async function processOutcome() {
+      if (hasExecutedRef.current) return;
+      hasExecutedRef.current = true;
+
       const pending = await PendingPaymentStorage.get();
       const mTxnId = params.merchantTxnId || pending?.merchantTxnId || '';
       const bId = params.bookingId || pending?.bookingId || '';
 
       const parsed = parseRazorpayCallbackParams(params, mTxnId);
+      PaymentCoordinator.setHandledByDeepLink(true);
+      PaymentCoordinator.notifyResult(parsed);
 
       if (!isMounted) return;
+
+      const canNavigate = PaymentCoordinator.claimNavigationLock();
+      if (!canNavigate) {
+        // Navigation already handled by coordinator
+        return;
+      }
 
       if (parsed.status === 'SUCCESS' || (parsed.gatewayPaymentId && parsed.gatewaySignature)) {
         if (pending) {
           await PendingPaymentStorage.set({
             ...pending,
+            bookingId: bId || pending.bookingId,
+            merchantTxnId: mTxnId || pending.merchantTxnId,
             gatewayOrderId: parsed.gatewayOrderId || pending.gatewayOrderId,
             gatewayPaymentId: parsed.gatewayPaymentId || pending.gatewayPaymentId,
             gatewaySignature: parsed.gatewaySignature || pending.gatewaySignature,
@@ -45,7 +60,7 @@ export default function PaymentResultScreen() {
           },
         });
       } else if (parsed.status === 'CANCELLED') {
-        router.replace('/booking/payment' as any);
+        router.replace('/booking/review' as any);
       } else {
         router.replace({
           pathname: '/booking/processing' as any,
@@ -73,7 +88,7 @@ export default function PaymentResultScreen() {
         variant="bodyMedium"
         style={{ color: colors.textSecondary, marginTop: spacing.base }}
       >
-        Processing payment return...
+        Confirming payment return...
       </AppText>
     </SafeAreaView>
   );

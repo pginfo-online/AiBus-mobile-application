@@ -26,6 +26,7 @@ import {
   PaymentModeType,
 } from '../../features/payments/usePaymentMutations';
 import { RazorpayService } from '../../features/payments/RazorpayService';
+import { PaymentCoordinator } from '../../features/payments/PaymentCoordinator';
 import { PendingPaymentStorage } from '../../core/storage';
 
 type PaymentMethodOption = {
@@ -186,18 +187,20 @@ export default function PaymentScreen() {
           gatewaySignature: checkoutResult.gatewaySignature,
         });
 
-        // Navigate directly to server-side verification screen
-        router.push({
-          pathname: '/booking/processing' as any,
-          params: {
-            bookingId: activeBookingId,
-            merchantTxnId: checkoutResult.merchantTxnId,
-            amount: String(intentRes.amount),
-            gatewayOrderId: checkoutResult.gatewayOrderId || '',
-            gatewayPaymentId: checkoutResult.gatewayPaymentId || '',
-            gatewaySignature: checkoutResult.gatewaySignature || '',
-          },
-        });
+        // Single-flight navigation guard: Prevents blank white screens
+        if (PaymentCoordinator.claimNavigationLock()) {
+          router.replace({
+            pathname: '/booking/processing' as any,
+            params: {
+              bookingId: activeBookingId,
+              merchantTxnId: checkoutResult.merchantTxnId,
+              amount: String(intentRes.amount),
+              gatewayOrderId: checkoutResult.gatewayOrderId || '',
+              gatewayPaymentId: checkoutResult.gatewayPaymentId || '',
+              gatewaySignature: checkoutResult.gatewaySignature || '',
+            },
+          });
+        }
       } else if (checkoutResult.status === 'CANCELLED') {
         Alert.alert(
           'Payment Incomplete',

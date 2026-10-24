@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../core/api/client';
 import { BookingResponseData } from '../../types/api';
+import { PaymentIntentResponse, PaymentGatewayType, PaymentModeType } from '../payments/usePaymentMutations';
 
 export interface HoldSeatsPayload {
   fromCityId: number;
@@ -65,6 +66,17 @@ export interface CreateBookingPayload {
   cancellationPolicy?: any;
 }
 
+export interface CreateCheckoutSessionPayload extends CreateBookingPayload {
+  gateway?: PaymentGatewayType;
+  paymentMode?: PaymentModeType;
+  redirectUrl?: string;
+}
+
+export interface CheckoutSessionResponse {
+  booking: BookingResponseData;
+  paymentIntent: PaymentIntentResponse;
+}
+
 export function useHoldSeatsMutation() {
   return useMutation({
     mutationFn: async (payload: HoldSeatsPayload) => {
@@ -80,6 +92,19 @@ export function useCreateBookingMutation() {
     mutationFn: async (payload: CreateBookingPayload) => {
       const res = await apiClient.post('/bookings', payload);
       return res.data?.data as BookingResponseData;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bookings', 'my-bookings'] });
+    },
+  });
+}
+
+export function useCreateCheckoutSessionMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: CreateCheckoutSessionPayload) => {
+      const res = await apiClient.post('/bookings/checkout-session', payload);
+      return res.data?.data as CheckoutSessionResponse;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bookings', 'my-bookings'] });
@@ -106,7 +131,10 @@ export function useUserBookingsQuery(enabled = true) {
       const res = await apiClient.get('/bookings/my-bookings');
       return res.data?.data || [];
     },
-    staleTime: 30 * 1000,
+    staleTime: 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     enabled,
   });
 }

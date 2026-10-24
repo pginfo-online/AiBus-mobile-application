@@ -66,17 +66,8 @@ function RootNavigationLayout() {
         <Stack.Screen
           name="(auth)/login"
           options={{
-            title: 'Log In',
             presentation: 'modal',
-            headerShown: true,
-          }}
-        />
-        <Stack.Screen
-          name="(auth)/signup"
-          options={{
-            title: 'Create Account',
-            presentation: 'modal',
-            headerShown: true,
+            headerShown: false,
           }}
         />
         <Stack.Screen
@@ -151,9 +142,7 @@ function RootNavigationLayout() {
         <Stack.Screen
           name="ticket/[bookingId]"
           options={{
-            title: 'Booking Confirmation',
-            headerShown: true,
-            headerBackVisible: false,
+            headerShown: false,
           }}
         />
       </Stack>

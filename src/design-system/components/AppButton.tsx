@@ -6,6 +6,7 @@ import {
   View,
   ViewStyle,
   TextStyle,
+  StyleProp,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useAppTheme } from '../theme';
@@ -24,7 +25,7 @@ export interface AppButtonProps {
   icon?: React.ReactNode;
   rightIcon?: React.ReactNode;
   fullWidth?: boolean;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   textStyle?: TextStyle;
   hapticFeedback?: boolean;
   testID?: string;

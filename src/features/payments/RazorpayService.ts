@@ -7,6 +7,8 @@ import {
   parseRazorpayCallbackParams,
   RazorpayCheckoutResult,
 } from './razorpayHelper';
+import { PaymentCoordinator } from './PaymentCoordinator';
+import { PendingPaymentStorage } from '../../core/storage';
 
 /**
  * Production Razorpay Checkout Service
@@ -15,6 +17,7 @@ import {
  * 2. Native react-native-razorpay bridge if compiled in standalone binary
  * 3. Deep-link return callback handling (aibus://payment-result)
  * 4. User cancellation and dismissal recovery
+ * 5. Single-flight payment coordination to prevent blank white screens
  */
 export const RazorpayService = {
   /**
@@ -26,30 +29,25 @@ export const RazorpayService = {
   ): Promise<RazorpayCheckoutResult> {
     const redirectUrl = options?.redirectUrl || 'aibus://payment-result';
 
-    // 1. Check if official native react-native-razorpay module is linked and available
-    const hasNativeModule =
-      Platform.OS !== 'web' &&
-      Boolean(
-        NativeModules.RNRazorpayCheckout ||
-        NativeModules.RazorpayEventEmitter ||
-        (globalThis as any).RazorpayCheckoutModule
-      );
+    // Register active payment session with coordinator
+    PaymentCoordinator.setActiveSession(intent.merchantTxnId);
 
-    if (hasNativeModule) {
+    // 1. Invoke official native react-native-razorpay module directly on mobile (iOS/Android)
+    if (Platform.OS !== 'web') {
       try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const nativeRazorpay = require('react-native-razorpay');
         const RazorpayCheckout = nativeRazorpay.default || nativeRazorpay;
 
-        if (RazorpayCheckout?.open && intent.sdkPayload) {
-          const prefill = (intent.sdkPayload.prefill as any) || {};
+        if (RazorpayCheckout?.open) {
+          const prefill = (intent.sdkPayload?.prefill as any) || {};
           const nativeOptions: Record<string, any> = {
-            ...intent.sdkPayload,
-            key: intent.sdkPayload.key,
-            order_id: intent.gatewayOrderId || intent.sdkPayload.order_id,
-            amount: intent.sdkPayload.amount || Math.round(intent.amount * 100),
-            name: intent.sdkPayload.name || AppConfig.appName,
-            description: intent.sdkPayload.description || `Bus Booking #${intent.merchantTxnId}`,
+            ...(intent.sdkPayload || {}),
+            key: intent.sdkPayload?.key,
+            order_id: intent.gatewayOrderId || intent.sdkPayload?.order_id,
+            amount: intent.sdkPayload?.amount || Math.round(intent.amount * 100),
+            name: intent.sdkPayload?.name || AppConfig.appName,
+            description: intent.sdkPayload?.description || `Bus Booking #${intent.merchantTxnId}`,
             currency: intent.currency || 'INR',
             prefill: {
               name: prefill.name || '',
@@ -63,13 +61,13 @@ export const RazorpayService = {
               confirm_close: true,
             },
             notes: {
-              bookingId: (intent.sdkPayload.notes as any)?.bookingId || '',
+              bookingId: (intent.sdkPayload?.notes as any)?.bookingId || '',
               merchantTxnId: intent.merchantTxnId,
             },
           };
 
           const nativeData = await RazorpayCheckout.open(nativeOptions);
-          return {
+          const result: RazorpayCheckoutResult = {
             success: true,
             status: 'SUCCESS',
             merchantTxnId: intent.merchantTxnId,
@@ -77,6 +75,8 @@ export const RazorpayService = {
             gatewayOrderId: nativeData.razorpay_order_id || intent.gatewayOrderId,
             gatewaySignature: nativeData.razorpay_signature,
           };
+          PaymentCoordinator.notifyResult(result);
+          return result;
         }
       } catch (nativeErr: any) {
         // Native module error or user cancellation
@@ -89,26 +89,36 @@ export const RazorpayService = {
           description.toLowerCase().includes('dismiss');
 
         if (isCancelled) {
-          return {
+          const result: RazorpayCheckoutResult = {
             success: false,
             status: 'CANCELLED',
             merchantTxnId: intent.merchantTxnId,
             errorDescription: 'Payment was cancelled by user.',
           };
+          PaymentCoordinator.notifyResult(result);
+          return result;
         }
 
         // Genuine payment decline or bank error from native SDK
-        if (code !== undefined && code !== null && !description.includes('null') && !description.includes('undefined')) {
-          return {
+        if (
+          code !== undefined &&
+          code !== null &&
+          !description.includes('null') &&
+          !description.includes('undefined') &&
+          !description.includes('Cannot find native module')
+        ) {
+          const result: RazorpayCheckoutResult = {
             success: false,
             status: 'FAILED',
             merchantTxnId: intent.merchantTxnId,
             errorCode: String(code),
             errorDescription: description || 'Payment was declined by issuing bank.',
           };
+          PaymentCoordinator.notifyResult(result);
+          return result;
         }
 
-        // If native module was not truly compiled in this binary (e.g. running in Expo Go or dev web), fall through to in-app hosted checkout
+        // If native module was not truly compiled in this binary, fall through to in-app hosted checkout
         console.warn('Native Razorpay invocation unavailable, falling back to in-app secure checkout:', nativeErr);
       }
     }
@@ -129,19 +139,26 @@ export const RazorpayService = {
     return new Promise<RazorpayCheckoutResult>(async (resolve) => {
       let resolved = false;
 
+      const finish = (res: RazorpayCheckoutResult) => {
+        if (resolved) return;
+        resolved = true;
+        urlSubscription.remove();
+        PaymentCoordinator.notifyResult(res);
+        try {
+          WebBrowser.dismissAuthSession();
+        } catch {
+          // Safe ignore
+        }
+        resolve(res);
+      };
+
       // Deep link subscription fallback for backgrounding / app switch
       const urlSubscription = Linking.addEventListener('url', (event) => {
         if (resolved) return;
         const parsed = Linking.parse(event.url);
         if (parsed.scheme === 'aibus' && (parsed.hostname === 'payment-result' || parsed.path === 'payment-result')) {
-          resolved = true;
-          urlSubscription.remove();
-          try {
-            WebBrowser.dismissAuthSession();
-          } catch {
-            // Ignore dismiss error
-          }
-          resolve(RazorpayService.parseCallbackParams(parsed.queryParams || undefined, intent.merchantTxnId));
+          const res = RazorpayService.parseCallbackParams(parsed.queryParams || undefined, intent.merchantTxnId);
+          finish(res);
         }
       });
 
@@ -150,24 +167,45 @@ export const RazorpayService = {
 
         if (resolved) return;
 
+        // Check if deep link listener or coordinator already captured the outcome
+        const coordinatedResult = PaymentCoordinator.consumeLastResult(intent.merchantTxnId);
+        if (coordinatedResult) {
+          finish(coordinatedResult);
+          return;
+        }
+
         if (authResult.type === 'success' && authResult.url) {
-          resolved = true;
-          urlSubscription.remove();
           const parsed = Linking.parse(authResult.url);
-          resolve(RazorpayService.parseCallbackParams(parsed.queryParams || undefined, intent.merchantTxnId));
+          finish(RazorpayService.parseCallbackParams(parsed.queryParams || undefined, intent.merchantTxnId));
         } else if (authResult.type === 'cancel' || authResult.type === 'dismiss') {
-          resolved = true;
-          urlSubscription.remove();
-          resolve({
+          // Guard: On Android, Chrome Custom Tabs dismisses automatically upon deep link scheme redirect.
+          // Check if pending storage already recorded payment credentials before treating as cancelled.
+          const pending = await PendingPaymentStorage.get();
+          if (
+            pending &&
+            pending.merchantTxnId === intent.merchantTxnId &&
+            pending.gatewayPaymentId &&
+            pending.gatewaySignature
+          ) {
+            finish({
+              success: true,
+              status: 'SUCCESS',
+              merchantTxnId: intent.merchantTxnId,
+              gatewayOrderId: pending.gatewayOrderId,
+              gatewayPaymentId: pending.gatewayPaymentId,
+              gatewaySignature: pending.gatewaySignature,
+            });
+            return;
+          }
+
+          finish({
             success: false,
             status: 'CANCELLED',
             merchantTxnId: intent.merchantTxnId,
             errorDescription: 'Payment was cancelled or closed.',
           });
         } else {
-          resolved = true;
-          urlSubscription.remove();
-          resolve({
+          finish({
             success: false,
             status: 'CANCELLED',
             merchantTxnId: intent.merchantTxnId,
@@ -176,20 +214,18 @@ export const RazorpayService = {
         }
       } catch (browserErr: any) {
         if (resolved) return;
-        resolved = true;
-        urlSubscription.remove();
 
         // Browser launch fallback
         try {
           await WebBrowser.openBrowserAsync(checkoutUrl);
-          resolve({
+          finish({
             success: false,
             status: 'CANCELLED',
             merchantTxnId: intent.merchantTxnId,
             errorDescription: 'External browser opened. Awaiting verification callback.',
           });
         } catch (openErr: any) {
-          resolve({
+          finish({
             success: false,
             status: 'FAILED',
             merchantTxnId: intent.merchantTxnId,

@@ -101,20 +101,39 @@ export interface BookingResponseData {
   pickupTime?: string;
   dropoffLocation?: string;
   dropoffTime?: string;
-  seats: Array<{
+  cancelledAt?: string | null;
+  cancellationPolicy?: any;
+  pickupSnapshot?: any;
+  dropoffSnapshot?: any;
+  cancellations?: {
+    id: string;
+    status: string;
+    refundAmount: string | number;
+    chargeAmt: string | number;
+    seatNos: string[];
+    createdAt: string;
+  }[];
+  refunds?: {
+    id: string;
+    amount: string | number;
+    status: string;
+    destination: string;
+    completedAt?: string | null;
+  }[];
+  seats: {
     id: string;
     seatNo: string;
     seatTypeId: number;
     fareTotal: string | number;
-  }>;
-  passengers: Array<{
+  }[];
+  passengers: {
     id: string;
     name: string;
     age: number;
     gender: 'M' | 'F';
     seatNo: string;
     fare: string | number;
-  }>;
+  }[];
   ticket?: {
     ticketNumber: string;
     pnrNumber: string;
@@ -132,3 +151,56 @@ export interface TicketResponseData {
   generatedAt: string;
   booking: BookingResponseData;
 }
+
+export interface CancellationCheckResponse {
+  bookingId: string;
+  bookingNumber: string;
+  ticketNo?: string;
+  pnrNo?: string;
+  seatNos: string;
+  IsCancellable: boolean;
+  RefundPercentage?: number;
+  CancellationCharge?: number;
+  RefundAmount?: number;
+  Message?: string;
+}
+
+export interface CancellationResultResponse {
+  cancellation: {
+    id: string;
+    bookingId: string;
+    status: string;
+    seatNos: string[];
+    chargePct: number;
+    chargeAmt: number;
+    refundAmount: number;
+    totalFare: number;
+    reason?: string;
+  };
+  refund: {
+    id: string;
+    bookingId: string;
+    amount: number;
+    status: string;
+    destination: string;
+  };
+  walletCredited?: boolean;
+  newWalletBalance?: number | null;
+}
+
+export interface WalletTransactionItem {
+  id: string;
+  type: 'CREDIT' | 'DEBIT' | 'REFUND' | 'REVERSAL';
+  amount: number;
+  balanceAfter: number;
+  referenceType: string;
+  referenceId?: string;
+  description?: string;
+  createdAt: string;
+}
+
+export interface WalletResponseData {
+  walletBalance: number;
+  transactions: WalletTransactionItem[];
+}
+

@@ -7,6 +7,7 @@ import {
   Switch,
   Alert,
   Dimensions,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -164,12 +165,14 @@ export default function HomeScreen() {
       {/* 1. Header Bar matching ref-1: Logo on left, Wallet & My Account on right */}
       <View style={styles.topHeaderBar}>
         <View style={styles.brandRow}>
-          <View style={styles.brandBadge}>
-            <Ionicons name="bus" size={20} color="#FFFFFF" />
-          </View>
-          <AppText variant="heading2" style={styles.brandTitle}>
+          <Image
+            source={require('../../../assets/images/app-logo.png')}
+            style={styles.brandLogoImage}
+            resizeMode="contain"
+          />
+          {/* <AppText variant="heading2" style={styles.brandTitle}>
             Ai<AppText variant="heading2" style={{ color: '#0F172A' }}>Bus</AppText>
-          </AppText>
+          </AppText> */}
         </View>
 
         <View style={styles.headerRightActions}>
@@ -212,106 +215,7 @@ export default function HomeScreen() {
         contentContainerStyle={styles.scrollContainer}
       >
         {/* 2. Category Selector Cards: Bus, Train, Hotel, Metro matching ref-1 */}
-        <View style={styles.categoryRow}>
-          {/* Bus */}
-          <Pressable
-            onPress={() => setActiveCategory('bus')}
-            style={[
-              styles.categoryCard,
-              activeCategory === 'bus' && styles.categoryCardActive,
-            ]}
-          >
-            <View style={[styles.offerTag, { backgroundColor: '#DCFCE7' }]}>
-              <AppText variant="caption" style={[styles.offerTagText, { color: '#15803D' }]}>
-                ₹300 off
-              </AppText>
-            </View>
-            <View style={styles.categoryIconWrap}>
-              <Ionicons name="bus" size={28} color={activeCategory === 'bus' ? '#D92D20' : '#475569'} />
-            </View>
-            <AppText
-              variant="bodySmallMedium"
-              style={[
-                styles.categoryLabel,
-                activeCategory === 'bus' ? { color: '#D92D20', fontWeight: '700' } : null,
-              ]}
-            >
-              Bus
-            </AppText>
-          </Pressable>
 
-          {/* Train */}
-          <Pressable
-            onPress={() => {
-              setActiveCategory('train');
-              Alert.alert('AiBus Trains', 'Train bookings will be available in the upcoming release.');
-            }}
-            style={[
-              styles.categoryCard,
-              activeCategory === 'train' && styles.categoryCardActive,
-            ]}
-          >
-            <View style={[styles.offerTag, { backgroundColor: '#DCFCE7' }]}>
-              <AppText variant="caption" style={[styles.offerTagText, { color: '#15803D' }]}>
-                ₹300 Off
-              </AppText>
-            </View>
-            <View style={styles.categoryIconWrap}>
-              <Ionicons name="train" size={28} color="#475569" />
-            </View>
-            <AppText variant="bodySmallMedium" style={styles.categoryLabel}>
-              Train
-            </AppText>
-          </Pressable>
-
-          {/* Hotel */}
-          <Pressable
-            onPress={() => {
-              setActiveCategory('hotel');
-              Alert.alert('AiBus Hotels', 'Hotel bookings will be available in the upcoming release.');
-            }}
-            style={[
-              styles.categoryCard,
-              activeCategory === 'hotel' && styles.categoryCardActive,
-            ]}
-          >
-            <View style={[styles.offerTag, { backgroundColor: '#DCFCE7' }]}>
-              <AppText variant="caption" style={[styles.offerTagText, { color: '#15803D' }]}>
-                Save 70%
-              </AppText>
-            </View>
-            <View style={styles.categoryIconWrap}>
-              <Ionicons name="bed" size={28} color="#475569" />
-            </View>
-            <AppText variant="bodySmallMedium" style={styles.categoryLabel}>
-              Hotel
-            </AppText>
-          </Pressable>
-
-          {/* Metro */}
-          <Pressable
-            onPress={() => {
-              setActiveCategory('metro');
-              Alert.alert('AiBus Metro', 'Metro QR ticketing will be available in the upcoming release.');
-            }}
-            style={[
-              styles.categoryCard,
-              activeCategory === 'metro' && styles.categoryCardActive,
-            ]}
-          >
-            <View style={[styles.offerTag, { backgroundColor: '#DCFCE7' }]}>
-              <AppText variant="caption" style={[styles.offerTagText, { color: '#15803D' }]}>
-                20% Off
-              </AppText>
-            </View>
-            <View style={styles.categoryIconWrap}>
-              <MaterialCommunityIcons name="subway-variant" size={28} color="#475569" />
-            </View>
-            <AppText variant="bodySmallMedium" style={styles.categoryLabel}>
-              Metro
-            </AppText>
-          </Pressable>
-        </View>
 
         {/* 3. Section Title */}
         <View style={styles.sectionHeadingWrap}>
@@ -590,6 +494,11 @@ const styles = StyleSheet.create({
   brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  brandLogoImage: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
   },
   brandBadge: {
     width: 32,

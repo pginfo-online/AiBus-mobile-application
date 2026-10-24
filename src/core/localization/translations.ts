@@ -145,6 +145,23 @@ export const translations: Record<SupportedLanguage, Record<string, string>> = {
     'account.login': 'Log In / Sign Up',
     'account.wallet_balance': 'Wallet Balance',
 
+    // Fast Onboarding & OTP
+    'auth.onboarding_title': 'Enter your mobile number for quick help',
+    'auth.onboarding_sub': 'Enter your mobile number to get started',
+    'auth.country_code': 'Country Code',
+    'auth.mobile_number': 'Mobile number',
+    'auth.get_otp': 'Get OTP',
+    'auth.or_divider': 'or',
+    'auth.enter_otp_title': 'Enter the OTP we sent you',
+    'auth.enter_otp_label': 'Enter OTP (One Time Password)',
+    'auth.verify_otp': 'Verify OTP',
+    'auth.edit_number': 'Edit',
+    'auth.resend_in': "Didn't get the OTP? Try again in {time}",
+    'auth.resend_btn': "Didn't get the OTP? Resend OTP",
+    'auth.otp_sent_success': 'OTP sent successfully',
+    'auth.invalid_phone': 'Please enter a valid 10-digit Indian mobile number',
+    'auth.invalid_otp': 'Please enter the complete OTP',
+
     // Common Feedback
     'common.retry': 'Try Again',
     'common.cancel': 'Cancel',
@@ -297,6 +314,23 @@ export const translations: Record<SupportedLanguage, Record<string, string>> = {
     'account.login': 'लॉग इन / साइन अप',
     'account.wallet_balance': 'वॉलेट बैलेंस',
 
+    // Fast Onboarding & OTP
+    'auth.onboarding_title': 'त्वरित सहायता के लिए अपना मोबाइल नंबर दर्ज करें',
+    'auth.onboarding_sub': 'शुरू करने के लिए अपना मोबाइल नंबर दर्ज करें',
+    'auth.country_code': 'देश कोड',
+    'auth.mobile_number': 'मोबाइल नंबर',
+    'auth.get_otp': 'ओटीपी प्राप्त करें',
+    'auth.or_divider': 'या',
+    'auth.enter_otp_title': 'आपको भेजा गया ओटीपी दर्ज करें',
+    'auth.enter_otp_label': 'ओटीपी दर्ज करें (वन टाइम पासवर्ड)',
+    'auth.verify_otp': 'ओटीपी सत्यापित करें',
+    'auth.edit_number': 'बदलें',
+    'auth.resend_in': 'ओटीपी नहीं मिला? {time} में पुनः प्रयास करें',
+    'auth.resend_btn': 'ओटीपी नहीं मिला? ओटीपी पुनः भेजें',
+    'auth.otp_sent_success': 'ओटीपी सफलतापूर्वक भेजा गया',
+    'auth.invalid_phone': 'कृपया एक मान्य 10 अंकों का मोबाइल नंबर दर्ज करें',
+    'auth.invalid_otp': 'कृपया पूरा ओटीपी दर्ज करें',
+
     // Common Feedback
     'common.retry': 'पुनः प्रयास करें',
     'common.cancel': 'रद्द करें',
@@ -448,6 +482,23 @@ export const translations: Record<SupportedLanguage, Record<string, string>> = {
     'account.logout': 'लॉग आउट',
     'account.login': 'लॉग इन / साइन अप',
     'account.wallet_balance': 'वॉलेट शिल्लक',
+
+    // Fast Onboarding & OTP
+    'auth.onboarding_title': 'जलद मदतीसाठी तुमचा मोबाईल नंबर प्रविष्ट करा',
+    'auth.onboarding_sub': 'सुरू करण्यासाठी तुमचा मोबाईल नंबर टाका',
+    'auth.country_code': 'देश कोड',
+    'auth.mobile_number': 'मोबाईल नंबर',
+    'auth.get_otp': 'ओटीपी मिळवा',
+    'auth.or_divider': 'किंवा',
+    'auth.enter_otp_title': 'आम्ही पाठवलेला ओटीपी प्रविष्ट करा',
+    'auth.enter_otp_label': 'ओटीपी प्रविष्ट करा (वन टाईम पासवर्ड)',
+    'auth.verify_otp': 'ओटीपी पडताळा',
+    'auth.edit_number': 'बदला',
+    'auth.resend_in': 'ओटीपी मिळाला नाही? {time} मध्ये पुन्हा प्रयत्न करा',
+    'auth.resend_btn': 'ओटीपी मिळाला नाही? ओटीपी पुन्हा पाठवा',
+    'auth.otp_sent_success': 'ओटीपी यशस्वीरित्या पाठवला गेला',
+    'auth.invalid_phone': 'कृपया वैध 10 अंकी मोबाईल नंबर टाका',
+    'auth.invalid_otp': 'कृपया संपूर्ण ओटीपी टाका',
 
     // Common Feedback
     'common.retry': 'पुन्हा प्रयत्न करा',
