@@ -21,7 +21,7 @@
     "ios": {
       "bundleIdentifier": "com.worknai.aibus",
       "buildNumber": "2",
-      "supportsTablet": true,
+      "supportsTablet": false,
       "icon": "./assets/images/icon.png",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "AiBus uses photo library access only when you choose a photo from your library for use in the app. It does not browse your photos."
