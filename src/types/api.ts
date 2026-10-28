@@ -204,3 +204,47 @@ export interface WalletResponseData {
   transactions: WalletTransactionItem[];
 }
 
+export interface CouponItem {
+  id: string;
+  code: string;
+  category: string;
+  title: string;
+  subtitle: string;
+  type: 'FLAT' | 'PERCENTAGE';
+  value: number;
+  maxDiscount?: number | null;
+  minOrderValue?: number | null;
+  discountBadge: string;
+  validUntil: string;
+  formattedExpiry: string;
+  description: string;
+  termsAndConditions: string[];
+  bannerImageUrl?: string;
+}
+
+export interface ValidateCouponPayload {
+  code: string;
+  totalFare: number;
+  busId?: number;
+  operatorName?: string;
+  fromCityId?: number;
+  toCityId?: number;
+}
+
+export interface ValidateCouponResponse {
+  valid: boolean;
+  coupon: CouponItem;
+  discountAmount: number;
+  originalFare: number;
+  finalPayableAmount: number;
+  message?: string;
+}
+
+export interface AppliedCoupon {
+  code: string;
+  title: string;
+  discountAmount: number;
+  coupon: CouponItem;
+}
+
+

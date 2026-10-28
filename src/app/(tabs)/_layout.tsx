@@ -86,6 +86,20 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="offers"
+        options={{
+          title: t('tab.offers'),
+          tabBarAccessibilityLabel: t('tab.offers'),
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? 'pricetag' : 'pricetag-outline'}
+              size={24}
+              color={color}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="help"
         options={{
           title: t('tab.help'),
@@ -102,15 +116,8 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="account"
         options={{
+          href: null,
           title: t('tab.account'),
-          tabBarAccessibilityLabel: t('tab.account'),
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons
-              name={focused ? 'person' : 'person-outline'}
-              size={24}
-              color={color}
-            />
-          ),
         }}
       />
     </Tabs>

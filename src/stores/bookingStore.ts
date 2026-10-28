@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { AppliedCoupon } from '../types/api';
 
 export interface CitySelection {
   id: string;
@@ -67,6 +68,10 @@ interface BookingFlowState {
   activeBookingId: string | null;
   activeBookingNumber: string | null;
 
+  // Offers & Coupons & Wallet
+  appliedCoupon: AppliedCoupon | null;
+  useWallet: boolean;
+
   // Actions
   setFromCity: (city: CitySelection) => void;
   setToCity: (city: CitySelection) => void;
@@ -84,6 +89,9 @@ interface BookingFlowState {
   setGstDetails: (gstin?: string, gstCompany?: string) => void;
   setActiveHold: (hold: HoldDetails | null) => void;
   setActiveBooking: (bookingId: string | null, bookingNumber: string | null) => void;
+  applyCoupon: (coupon: AppliedCoupon) => void;
+  removeCoupon: () => void;
+  setUseWallet: (use: boolean) => void;
   resetBookingFlow: () => void;
 }
 
@@ -129,6 +137,9 @@ export const useBookingStore = create<BookingFlowState>((set, get) => ({
   activeBookingId: null,
   activeBookingNumber: null,
 
+  appliedCoupon: null,
+  useWallet: false,
+
   setFromCity: (city) => set({ fromCity: city }),
   setToCity: (city) => set({ toCity: city }),
   setJourneyDate: (date) => set({ journeyDate: date }),
@@ -152,6 +163,8 @@ export const useBookingStore = create<BookingFlowState>((set, get) => ({
       activeHold: null,
       activeBookingId: null,
       activeBookingNumber: null,
+      appliedCoupon: null,
+      useWallet: false,
     }),
 
   toggleSeat: (seat) => {
@@ -216,6 +229,10 @@ export const useBookingStore = create<BookingFlowState>((set, get) => ({
   setActiveBooking: (bookingId, bookingNumber) =>
     set({ activeBookingId: bookingId, activeBookingNumber: bookingNumber }),
 
+  applyCoupon: (coupon) => set({ appliedCoupon: coupon }),
+  removeCoupon: () => set({ appliedCoupon: null }),
+  setUseWallet: (useWallet) => set({ useWallet }),
+
   resetBookingFlow: () =>
     set({
       selectedBus: null,
@@ -226,5 +243,7 @@ export const useBookingStore = create<BookingFlowState>((set, get) => ({
       activeHold: null,
       activeBookingId: null,
       activeBookingNumber: null,
+      appliedCoupon: null,
+      useWallet: false,
     }),
 }));

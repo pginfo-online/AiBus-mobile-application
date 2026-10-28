@@ -64,6 +64,8 @@ export interface CreateBookingPayload {
     isAcSeat: boolean;
   }>;
   cancellationPolicy?: any;
+  couponCode?: string;
+  useWallet?: boolean;
 }
 
 export interface CreateCheckoutSessionPayload extends CreateBookingPayload {
@@ -121,6 +123,19 @@ export function useBookingDetailsQuery(bookingId?: string | null) {
       return res.data?.data;
     },
     enabled: Boolean(bookingId),
+  });
+}
+
+export function useBookingStatusQuery(bookingId?: string | null, enabled = true, refetchInterval: number | false = false) {
+  return useQuery({
+    queryKey: ['bookings', 'status', bookingId],
+    queryFn: async () => {
+      if (!bookingId) throw new Error('bookingId required');
+      const res = await apiClient.get(`/bookings/${bookingId}/status`);
+      return res.data?.data;
+    },
+    enabled: Boolean(bookingId) && enabled,
+    refetchInterval,
   });
 }
 

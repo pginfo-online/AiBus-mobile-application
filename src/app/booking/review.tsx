@@ -270,154 +270,55 @@ export default function ReviewBookingScreen() {
         // Safe fallback
       }
 
-      // 2. Resolve Checkout Session (Instant if pre-loaded, or await in-flight promise)
-      let session = preloadedSessionRef.current;
+      let holdId = activeHold?.id;
+      let effectiveTotalFare = activeHold?.totalFare || totalFare;
 
-      if (!session && preloadingPromiseRef.current) {
-        await preloadingPromiseRef.current;
-        session = preloadedSessionRef.current;
-      }
-
-      // If still not ready, perform on-demand consolidated checkout session
-      if (!session) {
-        let holdId = activeHold?.id;
-        let effectiveTotalFare = activeHold?.totalFare || totalFare;
-
-        if (!holdId || (activeHold && new Date(activeHold.expiresAt).getTime() <= Date.now() + 30000)) {
-          const holdRes = await holdMutation.mutateAsync({
-            fromCityId: fromCity.providerCityId,
-            toCityId: toCity.providerCityId,
-            journeyDate,
-            busId: selectedBus.RouteBusId || selectedBus.BusId,
-            pickupId: selectedBoardingPoint.code,
-            dropoffId: selectedDroppingPoint.code,
-            contactInfo: {
-              customerName: contactName || passengers[0]?.name || 'Passenger',
-              email: contactEmail || 'booking@aibus.in',
-              phone: contactPhone || '9876543210',
-              mobile: contactPhone || '9876543210',
-            },
-            gstDetails: gstin ? { gstin, gstCompany: gstCompany || '' } : undefined,
-            passengers: passengers.map((p) => ({
-              seatNo: p.seatNo,
-              seatTypeId: p.seatTypeId,
-              fare: p.fare,
-              gender: p.gender,
-              age: p.age,
-              name: p.name,
-              isAcSeat: p.isAcSeat,
-            })),
-          });
-
-          holdId = holdRes.id;
-          effectiveTotalFare = holdRes.totalFare || totalFare;
-
-          setActiveHold({
-            id: holdRes.id,
-            providerHoldId: holdRes.providerHoldId,
-            expiresAt: holdRes.expiresAt,
-            ttlSeconds: holdRes.ttlSeconds || 600,
-            totalFare: holdRes.totalFare || totalFare,
-          });
-        }
-
-        const sessionRes = await checkoutSessionMutation.mutateAsync({
-          holdId: holdId || undefined,
+      // Ensure active hold is created with provider
+      if (!holdId || (activeHold && new Date(activeHold.expiresAt).getTime() <= Date.now() + 30000)) {
+        const holdRes = await holdMutation.mutateAsync({
           fromCityId: fromCity.providerCityId,
           toCityId: toCity.providerCityId,
-          fromCityName: fromCity.name,
-          toCityName: toCity.name,
           journeyDate,
           busId: selectedBus.RouteBusId || selectedBus.BusId,
-          tripId: selectedBus.TripId || 'TRIP-DEFAULT',
-          pickupCode: selectedBoardingPoint.code,
-          pickupLocation: selectedBoardingPoint.name,
-          pickupTime: selectedBoardingPoint.time,
-          dropoffCode: selectedDroppingPoint.code,
-          dropoffLocation: selectedDroppingPoint.name,
-          dropoffTime: selectedDroppingPoint.time,
-          operatorName: selectedBus.CompanyName,
-          busType: selectedBus.BusTypeName,
-          totalFare: effectiveTotalFare,
-          baseFare,
-          serviceTax: taxes,
-          contactName: contactName || passengers[0]?.name || 'Passenger',
-          contactEmail: contactEmail || 'booking@aibus.in',
-          contactPhone: contactPhone || '9876543210',
-          passengers,
-          cancellationPolicy: selectedBus.CancellationPolicy,
-          gateway: 'RAZORPAY',
-          paymentMode: 'UPI',
+          pickupId: selectedBoardingPoint.code,
+          dropoffId: selectedDroppingPoint.code,
+          contactInfo: {
+            customerName: contactName || passengers[0]?.name || 'Passenger',
+            email: contactEmail || 'booking@aibus.in',
+            phone: contactPhone || '9876543210',
+            mobile: contactPhone || '9876543210',
+          },
+          gstDetails: gstin ? { gstin, gstCompany: gstCompany || '' } : undefined,
+          passengers: passengers.map((p) => ({
+            seatNo: p.seatNo,
+            seatTypeId: p.seatTypeId,
+            fare: p.fare,
+            gender: p.gender,
+            age: p.age,
+            name: p.name,
+            isAcSeat: p.isAcSeat,
+          })),
         });
 
-        session = {
-          bookingId: sessionRes.booking.id,
-          bookingNumber: sessionRes.booking.bookingNumber,
-          paymentIntent: sessionRes.paymentIntent,
-        };
+        holdId = holdRes.id;
+        effectiveTotalFare = holdRes.totalFare || totalFare;
 
-        preloadedSessionRef.current = session;
-        setActiveBooking(sessionRes.booking.id, sessionRes.booking.bookingNumber);
-      }
-
-      const targetBookingId = session.bookingId;
-      const targetIntent = session.paymentIntent;
-
-      // Persist transaction state in storage
-      await PendingPaymentStorage.set({
-        bookingId: targetBookingId,
-        merchantTxnId: targetIntent.merchantTxnId,
-        gatewayOrderId: targetIntent.gatewayOrderId,
-        amount: targetIntent.amount,
-        timestamp: Date.now(),
-        gateway: 'RAZORPAY',
-      });
-
-      // 3. Launch Razorpay Standard Checkout (< 50ms instant trigger)
-      const checkoutResult = await RazorpayService.openCheckout(targetIntent);
-
-      if (checkoutResult.status === 'SUCCESS' && checkoutResult.gatewayPaymentId) {
-        await PendingPaymentStorage.set({
-          bookingId: targetBookingId,
-          merchantTxnId: checkoutResult.merchantTxnId,
-          amount: targetIntent.amount,
-          timestamp: Date.now(),
-          gateway: 'RAZORPAY',
-          gatewayOrderId: checkoutResult.gatewayOrderId,
-          gatewayPaymentId: checkoutResult.gatewayPaymentId,
-          gatewaySignature: checkoutResult.gatewaySignature,
+        setActiveHold({
+          id: holdRes.id,
+          providerHoldId: holdRes.providerHoldId,
+          expiresAt: holdRes.expiresAt,
+          ttlSeconds: holdRes.ttlSeconds || 600,
+          totalFare: holdRes.totalFare || totalFare,
         });
-
-        // 4. Single-flight Navigation Guard: Prevents duplicate transitions & blank white screens
-        if (PaymentCoordinator.claimNavigationLock()) {
-          router.replace({
-            pathname: '/booking/processing' as any,
-            params: {
-              bookingId: targetBookingId,
-              merchantTxnId: targetIntent.merchantTxnId,
-              gatewayOrderId: checkoutResult.gatewayOrderId || '',
-              gatewayPaymentId: checkoutResult.gatewayPaymentId || '',
-              gatewaySignature: checkoutResult.gatewaySignature || '',
-              amount: String(targetIntent.amount),
-            },
-          });
-        }
-      } else if (checkoutResult.status === 'CANCELLED') {
-        Alert.alert(
-          'Payment Cancelled',
-          'Your seat hold is still active for a few minutes. Tap Proceed to Pay whenever you are ready to retry.'
-        );
-      } else if (checkoutResult.status === 'FAILED') {
-        Alert.alert(
-          'Payment Failed',
-          checkoutResult.errorDescription || 'Payment was declined by your bank. Please retry or use another payment method.'
-        );
       }
+
+      // Navigate cleanly to Payment screen with active hold
+      router.push('/booking/payment' as any);
     } catch (err: any) {
       const errorMsg =
         err instanceof DomainError
           ? err.message
-          : err?.response?.data?.error?.message || err?.message || 'Failed to process booking. Please try again.';
+          : err?.response?.data?.error?.message || err?.message || 'Failed to hold seats. Please try again.';
 
       Alert.alert('Unable to Proceed', errorMsg, [
         {
@@ -631,15 +532,15 @@ export default function ReviewBookingScreen() {
         <AppButton
           title={
             isSubmitting
-              ? 'Opening Secure Payment...'
-              : t('review.proceed_pay', { amount: totalFare.toFixed(2) })
+              ? 'Securing seats...'
+              : `Proceed to Payment (₹${totalFare.toFixed(2)})`
           }
           onPress={handleConfirmAndPay}
           variant="primary"
           size="lg"
           fullWidth
           loading={isSubmitting}
-          icon={<Ionicons name="lock-closed" size={18} color="#FFFFFF" />}
+          icon={<Ionicons name="arrow-forward" size={18} color="#FFFFFF" />}
         />
       </View>
     </SafeAreaView>

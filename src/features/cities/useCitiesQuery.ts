@@ -2,12 +2,12 @@ import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../../core/api/client';
 import { CityItem } from '../../types/api';
 
-// Curated popular cities in India matching reference UI (ref-3.png)
+// Curated popular cities in India matching live GDS provider IDs & reference UI
 export const POPULAR_CITIES: CityItem[] = [
   { id: 'c-blr', providerCityId: 4292, name: 'Bengaluru' },
-  { id: 'c-hyd', providerCityId: 4562, name: 'Hyderabad' },
-  { id: 'c-chn', providerCityId: 3001, name: 'Chennai' },
-  { id: 'c-pun', providerCityId: 2002, name: 'Pune' },
+  { id: 'c-chn', providerCityId: 4562, name: 'Chennai' },
+  { id: 'c-hyd', providerCityId: 5215, name: 'Hyderabad' },
+  { id: 'c-pun', providerCityId: 6772, name: 'Pune' },
   { id: 'c-mum', providerCityId: 2001, name: 'Mumbai' },
   { id: 'c-del', providerCityId: 1001, name: 'Delhi' },
   { id: 'c-cbe', providerCityId: 3002, name: 'Coimbatore' },

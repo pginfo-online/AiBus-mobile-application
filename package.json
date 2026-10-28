@@ -9,6 +9,7 @@
     "@tanstack/react-query": "^5.104.1",
     "axios": "^1.20.0",
     "expo": "~57.0.27",
+    "expo-clipboard": "~57.0.2",
     "expo-constants": "~57.0.20",
     "expo-device": "~57.0.2",
     "expo-font": "~57.0.4",
@@ -59,7 +60,7 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "type-check": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/error-normalizer.test.ts tests/localization.test.ts tests/booking-store.test.ts tests/formatters-and-validation.test.ts tests/razorpay-service.test.ts tests/ticket-management-and-cancellation.test.ts tests/automatic-otp-and-phone.test.ts tests/payment-coordinator.test.ts",
+    "test": "node --experimental-strip-types --test tests/error-normalizer.test.ts tests/localization.test.ts tests/booking-store.test.ts tests/formatters-and-validation.test.ts tests/razorpay-service.test.ts tests/ticket-management-and-cancellation.test.ts tests/automatic-otp-and-phone.test.ts tests/payment-coordinator.test.ts tests/coupons-and-offers.test.ts",
     "update:production": "eas update --channel production",
     "update:preview": "eas update --channel preview"
   },

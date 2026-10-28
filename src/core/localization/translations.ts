@@ -5,8 +5,21 @@ export const translations: Record<SupportedLanguage, Record<string, string>> = {
     // Tabs
     'tab.home': 'Home',
     'tab.bookings': 'Bookings',
+    'tab.offers': 'Offers',
     'tab.help': 'Help',
     'tab.account': 'Account',
+
+    // Offers & Coupons
+    'offers.title': 'Offers',
+    'offers.all': 'All',
+    'offers.bus': 'Bus',
+    'offers.train': 'Train',
+    'offers.metro': 'Metro',
+    'offers.hotel': 'Hotel',
+    'offers.copy_code': 'Copy offer code',
+    'offers.code_copied': 'Coupon code copied to clipboard!',
+    'offers.terms_title': 'Terms & Conditions',
+    'offers.apply_and_book': 'Apply coupon & book',
 
     // Home & Search
     'home.wallet': 'in your wallet',
@@ -174,8 +187,21 @@ export const translations: Record<SupportedLanguage, Record<string, string>> = {
     // Tabs
     'tab.home': 'होम',
     'tab.bookings': 'बुकिंग्स',
+    'tab.offers': 'ऑफ़र्स',
     'tab.help': 'सहायता',
     'tab.account': 'खाता',
+
+    // Offers & Coupons
+    'offers.title': 'ऑफ़र्स',
+    'offers.all': 'सभी',
+    'offers.bus': 'बस',
+    'offers.train': 'ट्रेन',
+    'offers.metro': 'मेट्रो',
+    'offers.hotel': 'होटल',
+    'offers.copy_code': 'ऑफ़र कोड कॉपी करें',
+    'offers.code_copied': 'कूपन कोड कॉपी हो गया!',
+    'offers.terms_title': 'नियम और शर्तें',
+    'offers.apply_and_book': 'कूपन लागू करें और बुक करें',
 
     // Home & Search
     'home.wallet': 'आपके वॉलेट में',
@@ -343,8 +369,21 @@ export const translations: Record<SupportedLanguage, Record<string, string>> = {
     // Tabs
     'tab.home': 'मुख्यपृष्ठ',
     'tab.bookings': 'बुकिंग्ज',
+    'tab.offers': 'ऑफर',
     'tab.help': 'मदत',
     'tab.account': 'खाते',
+
+    // Offers & Coupons
+    'offers.title': 'ऑफर',
+    'offers.all': 'सर्व',
+    'offers.bus': 'बस',
+    'offers.train': 'ट्रेन',
+    'offers.metro': 'मेट्रो',
+    'offers.hotel': 'हॉटेल',
+    'offers.copy_code': 'ऑफर कोड कॉपी करा',
+    'offers.code_copied': 'कूपन कोड कॉपी झाला!',
+    'offers.terms_title': 'नियम व अटी',
+    'offers.apply_and_book': 'कूपन लागू करा आणि बुक करा',
 
     // Home & Search
     'home.wallet': 'तुमच्या वॉलेटमध्ये',

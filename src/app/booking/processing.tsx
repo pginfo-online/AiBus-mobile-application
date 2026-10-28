@@ -20,6 +20,7 @@ import {
   AppBadge,
 } from '../../design-system';
 import { useQueryClient } from '@tanstack/react-query';
+import { apiClient } from '../../core/api/client';
 import { useTranslation } from '../../core/localization';
 import { useVerifyPaymentMutation } from '../../features/payments/usePaymentMutations';
 import { useBookingStore } from '../../stores/bookingStore';
@@ -205,6 +206,46 @@ export default function ProcessingPaymentScreen() {
 
           if (i < RETRY_DELAYS.length - 1) {
             await new Promise((r) => setTimeout(r, RETRY_DELAYS[i]));
+          }
+        }
+      }
+
+      // 2. Active status reconciliation polling for asynchronous operator confirmation (redBus/AbhiBus standard)
+      if (!verifiedSuccess && bId && finalStatus !== 'FAILED' && finalStatus !== 'BOOKING_FAILED') {
+        const MAX_POLLS = 10;
+        const POLL_INTERVAL = 1500;
+
+        for (let poll = 0; poll < MAX_POLLS; poll++) {
+          if (isCancelledRef.current) return;
+          await new Promise((r) => setTimeout(r, POLL_INTERVAL));
+
+          try {
+            const statusRes = await apiClient.get(`/bookings/${bId}/status`);
+            const statusData = statusRes.data?.data;
+
+            if (statusData?.status === 'CONFIRMED') {
+              // Fetch full booking details for ticket presentation
+              const fullRes = await apiClient.get(`/bookings/${bId}`);
+              const fullBooking = fullRes.data?.data;
+
+              verifiedSuccess = true;
+              finalStatus = 'SUCCESS';
+              resultBooking = fullBooking;
+              resultTicket = fullBooking?.ticket || null;
+
+              if (fullBooking) {
+                queryClient.setQueryData(['booking', bId], fullBooking);
+                if (fullBooking.ticket) {
+                  queryClient.setQueryData(['ticket', bId], fullBooking.ticket);
+                }
+              }
+              break;
+            } else if (statusData?.status === 'FAILED' || statusData?.status === 'CANCELLED') {
+              finalStatus = 'BOOKING_FAILED';
+              break;
+            }
+          } catch {
+            // Ignore transient network errors during status polling
           }
         }
       }
@@ -585,14 +626,14 @@ export default function ProcessingPaymentScreen() {
         )}
 
         {/* 3. OPERATOR DELAYED / RECONCILIATION STATE */}
-        {!isVerifying && phase === 'BOOKING_CONFIRMATION_PENDING' && (
+        {!isVerifying && (phase === 'BOOKING_CONFIRMATION_PENDING' || phase === 'PENDING_TIMEOUT') && (
           <View style={styles.fallbackContainer}>
             <View style={[styles.fallbackIconCircle, { backgroundColor: '#FEF3C7' }]}>
               <Ionicons name="time" size={60} color="#D97706" />
             </View>
 
             <AppText variant="heading2" align="center" style={{ color: '#0F172A', marginTop: 18, fontWeight: '800' }}>
-              Reservation In Progress
+              Booking Under Processing
             </AppText>
 
             <AppText
@@ -600,26 +641,30 @@ export default function ProcessingPaymentScreen() {
               align="center"
               style={{ color: '#64748B', marginTop: 8, paddingHorizontal: 20, lineHeight: 22 }}
             >
-              {errorMessage || 'Your payment is secured! The bus operator is finalizing your PNR. We will notify you via SMS within 2 minutes.'}
+              {errorMessage || 'Your payment has been received! The bus operator is finalizing your ticket. We are monitoring your booking and will update you via SMS.'}
             </AppText>
 
             <View style={styles.actionsWrap}>
               <AppButton
-                title="Check My Bookings"
-                onPress={handleViewMyBookings}
+                title="Check Status Now"
+                onPress={() => {
+                  hasVerifiedRef.current = false;
+                  executeVerification();
+                }}
                 variant="primary"
                 size="lg"
                 fullWidth
                 style={styles.actionBtn}
-                icon={<Ionicons name="list" size={20} color="#FFFFFF" />}
+                icon={<Ionicons name="refresh" size={20} color="#FFFFFF" />}
               />
               <AppButton
-                title="Back to Home"
-                onPress={handleGoHome}
+                title="View in My Bookings"
+                onPress={handleViewMyBookings}
                 variant="outline"
                 size="lg"
                 fullWidth
                 style={[styles.actionBtn, { marginTop: 10 }]}
+                icon={<Ionicons name="list" size={20} color="#0F172A" />}
               />
             </View>
           </View>
@@ -659,7 +704,7 @@ export default function ProcessingPaymentScreen() {
         )}
 
         {/* 5. PAYMENT DECLINED / USER CANCELLED STATE */}
-        {!isVerifying && (phase === 'FAILED' || phase === 'NETWORK_ERROR' || phase === 'PENDING_TIMEOUT') && (
+        {!isVerifying && (phase === 'FAILED' || phase === 'NETWORK_ERROR') && (
           <View style={styles.fallbackContainer}>
             <View style={[styles.fallbackIconCircle, { backgroundColor: '#FEE2E2' }]}>
               <Ionicons name="close-circle" size={60} color="#DC2626" />

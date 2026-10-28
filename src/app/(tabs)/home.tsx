@@ -30,6 +30,7 @@ import { useTranslation } from '../../core/localization';
 import { useBookingStore } from '../../stores/bookingStore';
 import { useAppStore, RouteSearchItem } from '../../stores/appStore';
 import { useAuthStore } from '../../stores/authStore';
+import { useOffersQuery } from '../../features/offers';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -38,6 +39,7 @@ export default function HomeScreen() {
 
   const user = useAuthStore((s) => s.user);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const { data: offers = [] } = useOffersQuery('Bus');
 
   const {
     fromCity,
@@ -413,7 +415,110 @@ export default function HomeScreen() {
           </AppText>
         </Pressable>
 
-        {/* 6. Promotional Festival Sale Banner matching ref-1 bottom */}
+        {/* 6. Offers Carousel matching ref-2 */}
+        <View style={styles.offersSection}>
+          <View style={styles.offersHeaderRow}>
+            <AppText variant="heading3" style={{ color: '#0F172A', fontWeight: '800' }}>
+              Offers
+            </AppText>
+            <Pressable
+              onPress={() => router.push('/(tabs)/offers' as any)}
+              hitSlop={8}
+              style={{ flexDirection: 'row', alignItems: 'center' }}
+              accessibilityRole="button"
+              accessibilityLabel="View all offers"
+            >
+              <AppText variant="caption" style={{ color: '#0284C7', fontWeight: '700', marginRight: 2 }}>
+                View all
+              </AppText>
+              <Ionicons name="chevron-forward" size={14} color="#0284C7" />
+            </Pressable>
+          </View>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.offersScroll}
+          >
+            {offers.map((offer) => (
+              <Pressable
+                key={offer.id || offer.code}
+                onPress={() =>
+                  router.push({
+                    pathname: '/offers/[code]' as any,
+                    params: { code: offer.code },
+                  })
+                }
+                style={({ pressed }) => [
+                  styles.homeOfferCard,
+                  { opacity: pressed ? 0.9 : 1 },
+                ]}
+              >
+                <View style={styles.homeOfferTopRow}>
+                  <View style={styles.homeOfferIconCircle}>
+                    <Ionicons name="bus" size={18} color="#DC2626" />
+                  </View>
+                  <AppText variant="caption" style={styles.homeOfferCategory}>
+                    {offer.category}
+                  </AppText>
+                </View>
+
+                <AppText variant="bodyMedium" style={styles.homeOfferTitle} numberOfLines={2}>
+                  {offer.title}
+                </AppText>
+
+                <View style={styles.homeOfferBottomRow}>
+                  <AppText variant="caption" style={styles.homeOfferExpiry}>
+                    {offer.formattedExpiry}
+                  </AppText>
+
+                  <View style={styles.homeOfferCodePill}>
+                    <AppText variant="caption" style={styles.homeOfferCodeText}>
+                      {offer.code}
+                    </AppText>
+                    <Ionicons name="copy-outline" size={12} color="#64748B" style={{ marginLeft: 4 }} />
+                  </View>
+                </View>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+
+        {/* 7. Wallet Card matching ref-2 */}
+        <Pressable
+          onPress={() => {
+            if (!isAuthenticated) router.push('/(auth)/login' as any);
+            else router.push('/(tabs)/account' as any);
+          }}
+          style={({ pressed }) => [
+            styles.homeWalletCard,
+            { opacity: pressed ? 0.92 : 1 },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel={`Wallet balance ₹${walletAmount}. Transfer to bank.`}
+        >
+          <View style={styles.walletIconCircle}>
+            <Ionicons name="wallet" size={24} color="#0D9488" />
+          </View>
+
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <AppText variant="bodyLargeBold" style={{ color: '#0F172A' }}>
+              ₹{walletAmount} in your wallet
+            </AppText>
+            <AppText variant="caption" style={{ color: '#64748B', marginTop: 2 }}>
+              Transfer or invite friends to earn more
+            </AppText>
+          </View>
+
+          <View style={styles.transferButton}>
+            <AppText variant="caption" style={styles.transferButtonText}>
+              Transfer to bank
+            </AppText>
+            <Ionicons name="chevron-forward" size={12} color="#0D9488" style={{ marginLeft: 2 }} />
+          </View>
+        </Pressable>
+
+        {/* 8. Promotional Festival Sale Banner matching ref-1 bottom */}
         <View style={styles.promoBannerCard}>
           <View style={styles.promoContentRow}>
             <View style={styles.promoBadgeIcon}>
@@ -427,13 +532,13 @@ export default function HomeScreen() {
                 Flat ₹300 OFF on First 3 Bookings
               </AppText>
               <AppText variant="caption" style={{ color: '#92400E', marginTop: 2 }}>
-                Valid across all major routes · 10th OCT - 25th OCT
+                Valid across all major routes · Use code BUS300
               </AppText>
             </View>
           </View>
         </View>
 
-        {/* 7. Popular Routes Carousel */}
+        {/* 9. Popular Routes Carousel */}
         <View style={{ marginTop: 24 }}>
           <AppSectionHeader
             title="Popular corridors"
@@ -723,5 +828,122 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.04,
     shadowRadius: 3,
     elevation: 1,
+  },
+  offersSection: {
+    marginTop: 24,
+  },
+  offersHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  offersScroll: {
+    paddingRight: 16,
+    gap: 12,
+  },
+  homeOfferCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 14,
+    width: 240,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  homeOfferTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  homeOfferIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  homeOfferCategory: {
+    marginLeft: 8,
+    color: '#64748B',
+    fontWeight: '600',
+    fontSize: 12,
+  },
+  homeOfferTitle: {
+    color: '#0F172A',
+    fontWeight: '700',
+    marginTop: 8,
+    fontSize: 13,
+    lineHeight: 18,
+    height: 36,
+  },
+  homeOfferBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  homeOfferExpiry: {
+    color: '#64748B',
+    fontSize: 11,
+  },
+  homeOfferCodePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderStyle: 'dashed',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  homeOfferCodeText: {
+    fontWeight: '700',
+    color: '#0F172A',
+    fontSize: 11,
+  },
+  homeWalletCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 14,
+    marginTop: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  walletIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#CCFBF1',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  transferButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#F0FDFA',
+  },
+  transferButtonText: {
+    color: '#0D9488',
+    fontWeight: '700',
+    fontSize: 11,
   },
 });
