@@ -2,7 +2,7 @@
   "expo": {
     "name": "AiBus",
     "slug": "aibus",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "aibus",
@@ -32,7 +32,7 @@
     },
     "android": {
       "package": "com.worknai.aibus",
-      "versionCode": 4,
+      "versionCode": 6,
       "permissions": [
         "INTERNET"
       ],
