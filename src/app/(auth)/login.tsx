@@ -47,7 +47,9 @@ export default function FastOnboardingScreen() {
   const [otpLength, setOtpLength] = useState(6);
   const [resendCooldown, setResendCooldown] = useState(30);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
-  const toastFadeAnim = useRef(new Animated.Value(0)).current;
+  const [toastFadeAnim] = useState(() => new Animated.Value(0));
+  const otpRequestInFlight = useRef(false);
+  const otpVerificationInFlight = useRef(false);
 
   // Mutations
   const sendOtpMutation = useSendOtpMutation();
@@ -55,6 +57,34 @@ export default function FastOnboardingScreen() {
 
   // Automatic Google Number Hint (Android)
   const { requestHint } = useGooglePhoneNumberHint();
+
+  const verifyOtp = async (otpToVerify = otp) => {
+    if (otpVerificationInFlight.current) return;
+    const cleanOtp = otpToVerify.trim();
+    if (cleanOtp.length !== otpLength || !/^\d+$/.test(cleanOtp)) {
+      setErrorMessage(t('auth.invalid_otp'));
+   //   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      return;
+    }
+
+    otpVerificationInFlight.current = true;
+    setErrorMessage(null);
+    try {
+      await verifyOtpMutation.mutateAsync({
+        phone: phone.replace(/\D/g, '').slice(-10),
+        otp: cleanOtp,
+      });
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      // Successfully authenticated! Dismiss onboarding modal
+      router.back();
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Invalid verification code.');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+    } finally {
+      otpVerificationInFlight.current = false;
+    }
+  };
 
   // Automatic SMS OTP Retriever (Android SMS Retriever API & iOS oneTimeCode)
   const handleOtpDetected = (detectedOtp: string) => {
@@ -126,6 +156,7 @@ export default function FastOnboardingScreen() {
   };
 
   const requestOtp = async (targetPhone = phone) => {
+    if (otpRequestInFlight.current) return;
     const clean = targetPhone.replace(/\D/g, '').slice(-10);
     if (clean.length !== 10 || !/^[6-9]\d{9}$/.test(clean)) {
       setErrorMessage(t('auth.invalid_phone'));
@@ -133,6 +164,7 @@ export default function FastOnboardingScreen() {
       return;
     }
 
+    otpRequestInFlight.current = true;
     setErrorMessage(null);
     try {
       const res = await sendOtpMutation.mutateAsync({
@@ -151,30 +183,8 @@ export default function FastOnboardingScreen() {
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to send OTP. Please try again.');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
-    }
-  };
-
-  const verifyOtp = async (otpToVerify = otp) => {
-    const cleanOtp = otpToVerify.trim();
-    if (!cleanOtp || cleanOtp.length < 4) {
-      setErrorMessage(t('auth.invalid_otp'));
-   //   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
-      return;
-    }
-
-    setErrorMessage(null);
-    try {
-      await verifyOtpMutation.mutateAsync({
-        phone: phone.replace(/\D/g, '').slice(-10),
-        otp: cleanOtp,
-      });
-
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      // Successfully authenticated! Dismiss onboarding modal
-      router.back();
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Invalid verification code.');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+    } finally {
+      otpRequestInFlight.current = false;
     }
   };
 
@@ -421,7 +431,7 @@ export default function FastOnboardingScreen() {
               <View style={styles.resendRow}>
                 {resendCooldown > 0 ? (
                   <AppText variant="bodySmall" style={{ color: colors.textSecondary }}>
-                    Didn't get the OTP? Try again in{' '}
+                    Didn&apos;t get the OTP? Try again in{' '}
                     <AppText
                       variant="bodySmallMedium"
                       style={{ color: '#D84E55', fontWeight: '700' }}
@@ -432,7 +442,7 @@ export default function FastOnboardingScreen() {
                 ) : (
                   <Pressable onPress={handleResend} disabled={sendOtpMutation.isPending}>
                     <AppText variant="bodySmall" style={{ color: colors.textSecondary }}>
-                      Didn't get the OTP?{' '}
+                      Didn&apos;t get the OTP?{' '}
                       <AppText variant="bodySmallMedium" style={{ color: colors.primary, fontWeight: '700' }}>
                         Resend OTP
                       </AppText>

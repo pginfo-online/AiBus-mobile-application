@@ -1,3 +1,4 @@
+import { useSeatChartQuery } from '../../features/seats/useSeatChartQuery';
 import React, { useState, useMemo } from 'react';
 import {
   View,
@@ -37,7 +38,7 @@ export default function BoardingDroppingScreen() {
   // Format date for point display (e.g., '18 Oct')
   const boardingDateStr = useMemo(() => {
     try {
-      const d = new Date(journeyDate ? journeyDate + 'T00:00:00' : Date.now());
+      const d = new Date(journeyDate + 'T00:00:00');
       const day = d.getDate();
       const month = d.toLocaleDateString('en-US', { month: 'short' });
       return `${day} ${month}`;
@@ -48,7 +49,7 @@ export default function BoardingDroppingScreen() {
 
   const droppingDateStr = useMemo(() => {
     try {
-      const d = new Date(journeyDate ? journeyDate + 'T00:00:00' : Date.now());
+      const d = new Date(journeyDate + 'T00:00:00');
       // Check if arrival is next day (e.g. overnight journey)
       if (selectedBus?.DepartureTime && selectedBus?.ArrivalTime) {
         const depHour = parseInt(selectedBus.DepartureTime.split(':')[0], 10);
@@ -65,66 +66,12 @@ export default function BoardingDroppingScreen() {
     }
   }, [journeyDate, selectedBus]);
 
-  // Provide robust fallbacks if bus data has empty boarding/dropping arrays
-  const boardingList = useMemo(() => {
-    if (selectedBus?.BoardingPoints && selectedBus.BoardingPoints.length > 0) {
-      return selectedBus.BoardingPoints;
-    }
-    const cityName = fromCity?.name || 'City';
-    return [
-      {
-        PickupCode: 'BP-DEF-1',
-        PickupName: `${cityName} Central Bus Stand Front Entrance`,
-        PickupTime: selectedBus?.DepartureTime || '14:10',
-        Address: `Omni Bus Stand Front Entrance Near By Fuel Station, ${cityName}`,
-        Landmark: 'Central Omni Bus Stand',
-      },
-      {
-        PickupCode: 'BP-DEF-2',
-        PickupName: `${cityName} Bypass Junction`,
-        PickupTime: '14:40',
-        Address: `Near Highway Bypass Flyover, ${cityName}`,
-        Landmark: 'Bypass Flyover',
-      },
-      {
-        PickupCode: 'BP-DEF-3',
-        PickupName: `${cityName} Toll Gate`,
-        PickupTime: '15:15',
-        Address: `Before Highway Toll Plaza, ${cityName}`,
-        Landmark: 'Toll Plaza',
-      },
-    ];
-  }, [selectedBus, fromCity]);
-
-  const droppingList = useMemo(() => {
-    if (selectedBus?.DroppingPoints && selectedBus.DroppingPoints.length > 0) {
-      return selectedBus.DroppingPoints;
-    }
-    const cityName = toCity?.name || 'Destination';
-    return [
-      {
-        DropoffCode: 'DP-DEF-1',
-        DropoffName: `${cityName} Bypass Toll Gate`,
-        DropoffTime: selectedBus?.ArrivalTime || '20:30',
-        Address: `Highway Toll Plaza, ${cityName}`,
-        Landmark: 'Toll Plaza',
-      },
-      {
-        DropoffCode: 'DP-DEF-2',
-        DropoffName: `${cityName} Central Bus Terminal`,
-        DropoffTime: '21:00',
-        Address: `Opposite Railway Junction, ${cityName}`,
-        Landmark: 'Central Bus Stand',
-      },
-      {
-        DropoffCode: 'DP-DEF-3',
-        DropoffName: `${cityName} City Center`,
-        DropoffTime: '21:30',
-        Address: `Near Clock Tower, Main Road, ${cityName}`,
-        Landmark: 'Clock Tower',
-      },
-    ];
-  }, [selectedBus, toCity]);
+  const { data: chart, isLoading, isError, refetch } = useSeatChartQuery(
+    selectedBus?.RouteBusId || selectedBus?.BusId,
+    { fromCityId: fromCity.providerCityId, toCityId: toCity.providerCityId, journeyDate }
+  );
+  const boardingList = chart?.BoardingPoints ?? [];
+  const droppingList = chart?.DroppingPoints ?? [];
 
   const handleSelectBoarding = (item: any) => {
     try {
@@ -165,6 +112,11 @@ export default function BoardingDroppingScreen() {
   };
 
   const handleProceed = () => {
+    if (isLoading || isError || !boardingList.some((point) => point.PickupCode === selectedBoardingPoint?.code)
+      || (activeTab === 'dropping' && !droppingList.some((point) => point.DropoffCode === selectedDroppingPoint?.code))) {
+      Alert.alert('Select travel points', 'Choose a boarding and dropping point from the current list.');
+      return;
+    }
     if (!selectedBoardingPoint) {
       Alert.alert('Incomplete Selection', 'Please select a boarding point.');
       setActiveTab('boarding');
@@ -294,6 +246,9 @@ export default function BoardingDroppingScreen() {
             {/* List of Points */}
             {activeTab === 'boarding' ? (
               <View>
+                {!boardingList.length && <AppText>
+                  {isLoading ? 'Loading boarding points…' : 'Boarding points are unavailable.'}
+                </AppText>}
                 {boardingList.map((item: any, idx: number) => {
                   const isSelected = selectedBoardingPoint?.code === item.PickupCode;
                   const isPopular = idx === 0;
@@ -355,6 +310,9 @@ export default function BoardingDroppingScreen() {
               </View>
             ) : (
               <View>
+                {!droppingList.length && <AppText>
+                  {isLoading ? 'Loading dropping points…' : 'Dropping points are unavailable.'}
+                </AppText>}
                 {droppingList.map((item: any, idx: number) => {
                   const isSelected = selectedDroppingPoint?.code === item.DropoffCode;
                   const isPopular = idx === 0;
@@ -458,7 +416,7 @@ export default function BoardingDroppingScreen() {
           </View>
 
           <Pressable
-            onPress={handleProceed}
+            onPress={isError ? () => { void refetch(); } : handleProceed}
             style={({ pressed }) => [
               styles.proceedButton,
               {

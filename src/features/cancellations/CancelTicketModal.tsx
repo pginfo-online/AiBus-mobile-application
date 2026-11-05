@@ -56,7 +56,7 @@ export function CancelTicketModal({
     [booking.seats]
   );
 
-  const [selectedSeats, setSelectedSeats] = useState<string[]>(allSeatNos);
+  const selectedSeats = allSeatNos;
   const [selectedReason, setSelectedReason] = useState<string>(CANCEL_REASONS[0]);
   const [successResult, setSuccessResult] = useState<CancellationResultResponse | null>(null);
 
@@ -65,7 +65,6 @@ export function CancelTicketModal({
   if (prevVisible !== visible) {
     setPrevVisible(visible);
     if (visible) {
-      setSelectedSeats(allSeatNos);
       setSuccessResult(null);
     }
   }
@@ -75,28 +74,12 @@ export function CancelTicketModal({
     data: cancellableInfo,
     isLoading: isChecking,
     isError: isCheckError,
-  } = useCheckCancellabilityQuery(booking.id, selectedSeats, visible && !successResult);
+  } = useCheckCancellabilityQuery(booking.id, selectedSeats, visible && !successResult && selectedSeats.length > 0);
 
   const cancelMutation = useCancelBookingMutation();
 
-  const toggleSeatSelection = (seatNo: string) => {
-    try {
-      Haptics.selectionAsync();
-    } catch {
-      // Safe fallback
-    }
-    if (selectedSeats.includes(seatNo)) {
-      if (selectedSeats.length === 1) {
-        Alert.alert('Selection Error', 'At least one seat must be selected for cancellation.');
-        return;
-      }
-      setSelectedSeats(selectedSeats.filter((s) => s !== seatNo));
-    } else {
-      setSelectedSeats([...selectedSeats, seatNo]);
-    }
-  };
-
   const handleConfirmCancellation = async () => {
+    if (!cancellableInfo?.IsCancellable || cancelMutation.isPending) return;
     if (selectedSeats.length === 0) {
       Alert.alert('No Seats Selected', 'Please select at least one seat to cancel.');
       return;
@@ -113,7 +96,7 @@ export function CancelTicketModal({
         bookingId: booking.id,
         seatNos: selectedSeats,
         reason: selectedReason,
-        refundToWallet: true,
+        refundToWallet: false,
       });
 
       try {
@@ -202,10 +185,10 @@ export function CancelTicketModal({
                     </View>
                     <View style={{ marginLeft: 12, flex: 1 }}>
                       <AppText variant="caption" style={{ color: '#15803D', fontWeight: '700', textTransform: 'uppercase' }}>
-                        Refund Credited to Wallet
+                        Refund to Original Payment Method
                       </AppText>
                       <AppText variant="heading2" style={{ color: '#15803D' }}>
-                        ₹{Number(successResult.refund?.amount || refundAmount).toFixed(2)}
+                        ₹{Number(successResult.refund?.amount ?? 0).toFixed(2)}
                       </AppText>
                     </View>
                   </View>
@@ -213,7 +196,7 @@ export function CancelTicketModal({
                   <AppDivider spacingMargin="sm" />
 
                   <AppText variant="caption" style={{ color: '#166534', lineHeight: 18 }}>
-                    The refund amount has been instantly added to your AiBus Wallet. You can use it towards your next booking anytime without expiration.
+                    Refund status: {successResult.refund?.status?.replaceAll('_', ' ').toLowerCase() || 'unavailable'}.
                   </AppText>
                 </AppCard>
 
@@ -242,44 +225,9 @@ export function CancelTicketModal({
                 </View>
 
                 {/* Seat Selector (if multiple seats) */}
-                {allSeatNos.length > 1 && (
-                  <View style={{ marginTop: spacing.md }}>
-                    <AppText variant="bodySmallMedium" style={{ color: colors.text, marginBottom: 8 }}>
-                      Select Seats to Cancel
-                    </AppText>
-                    <View style={styles.seatPillsRow}>
-                      {allSeatNos.map((seatNo) => {
-                        const isSelected = selectedSeats.includes(seatNo);
-                        return (
-                          <Pressable
-                            key={`cancel-seat-${seatNo}`}
-                            onPress={() => toggleSeatSelection(seatNo)}
-                            style={[
-                              styles.seatPill,
-                              {
-                                backgroundColor: isSelected ? colors.primarySoft : colors.surfaceSecondary,
-                                borderColor: isSelected ? colors.primary : colors.border,
-                              },
-                            ]}
-                          >
-                            <Ionicons
-                              name={isSelected ? 'checkbox' : 'square-outline'}
-                              size={16}
-                              color={isSelected ? colors.primary : colors.textMuted}
-                              style={{ marginRight: 6 }}
-                            />
-                            <AppText
-                              variant="bodySmallMedium"
-                              style={{ color: isSelected ? colors.primary : colors.text }}
-                            >
-                              Seat {seatNo}
-                            </AppText>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  </View>
-                )}
+                <AppText variant="bodySmallMedium" style={{ marginTop: spacing.base }}>
+                  All seats will be cancelled ({allSeatNos.join(', ')}).
+                </AppText>
 
                 {/* Live Refund Calculation Breakdown */}
                 <View style={{ marginTop: spacing.base }}>
@@ -300,7 +248,7 @@ export function CancelTicketModal({
                         {isCheckError && (
                           <View style={{ marginBottom: 10, padding: 8, backgroundColor: '#FEF2F2', borderRadius: 6 }}>
                             <AppText variant="caption" style={{ color: colors.danger }}>
-                              Live check unavailable. Policy estimate is applied below.
+                              Could not retrieve the operator’s refund quote. Close and reopen to retry.
                             </AppText>
                           </View>
                         )}
@@ -347,10 +295,10 @@ export function CancelTicketModal({
                   <Ionicons name="wallet-outline" size={20} color="#1D4ED8" />
                   <View style={{ marginLeft: 10, flex: 1 }}>
                     <AppText variant="caption" style={{ color: '#1E40AF', fontWeight: '700' }}>
-                      AiBus Wallet Guarantee
+                      Refund destination
                     </AppText>
                     <AppText variant="caption" style={{ color: '#1E3A8A', marginTop: 2, lineHeight: 16 }}>
-                      Your refund of ₹{Number(refundAmount).toFixed(2)} will be deposited instantly into your AiBus Wallet as soon as you confirm.
+                      Eligible refunds are returned to the original payment method.
                     </AppText>
                   </View>
                 </View>
@@ -419,7 +367,7 @@ export function CancelTicketModal({
                     variant="danger"
                     size="md"
                     style={{ flex: 1.4, marginLeft: 8 }}
-                    disabled={cancelMutation.isPending || (cancellableInfo && !cancellableInfo.IsCancellable)}
+                    disabled={cancelMutation.isPending || !cancellableInfo?.IsCancellable || isCheckError}
                   />
                 </View>
               </View>

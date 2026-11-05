@@ -41,7 +41,7 @@ export function useCancelBookingMutation() {
       const res = await apiClient.post(`/cancellations/${payload.bookingId}`, {
         seatNos: payload.seatNos,
         reason: payload.reason,
-        refundToWallet: payload.refundToWallet ?? true,
+        refundToWallet: payload.refundToWallet ?? false,
       });
       return res.data?.data as CancellationResultResponse;
     },
@@ -53,7 +53,7 @@ export function useCancelBookingMutation() {
 
       // 2. Invalidate all booking and ticket queries
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
-      queryClient.invalidateQueries({ queryKey: ['bookings', variables.bookingId] });
+      queryClient.invalidateQueries({ queryKey: ['cancellations', 'check', variables.bookingId] });
       queryClient.invalidateQueries({ queryKey: ['tickets', 'booking', variables.bookingId] });
       queryClient.invalidateQueries({ queryKey: ['user', 'wallet'] });
       queryClient.invalidateQueries({ queryKey: ['users', 'profile'] });

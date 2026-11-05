@@ -75,12 +75,13 @@ apiClient.interceptors.response.use(
     const originalRequest = error.config;
 
     // Check if error is 401 and not already retrying
-    if (error.response?.status === 401 && !originalRequest?._retry) {
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
       // If the 401 came from login or refresh endpoint itself, do not retry
-      if (originalRequest?.url?.includes('/auth/login') || originalRequest?.url?.includes('/auth/refresh')) {
+      if (originalRequest.url?.startsWith('/auth/')) {
         return Promise.reject(normalizeError(error));
       }
 
+      originalRequest._retry = true;
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
@@ -94,7 +95,6 @@ apiClient.interceptors.response.use(
           });
       }
 
-      originalRequest._retry = true;
       isRefreshing = true;
 
       try {
@@ -110,8 +110,11 @@ apiClient.interceptors.response.use(
         // Call refresh endpoint directly using raw axios to avoid loop
         const refreshResponse = await axios.post(`${AppConfig.apiBaseUrl}/auth/refresh`, {
           refreshToken: storedRefreshToken,
-        });
+        }, { timeout: AppConfig.requestTimeoutMs });
 
+        if (await SecureTokenStorage.getRefreshToken() !== storedRefreshToken) {
+          throw new Error('Session changed during token refresh');
+        }
         const newTokens = refreshResponse.data?.data;
         if (newTokens?.accessToken) {
           await SecureTokenStorage.setAccessToken(newTokens.accessToken);
@@ -119,7 +122,6 @@ apiClient.interceptors.response.use(
             await SecureTokenStorage.setRefreshToken(newTokens.refreshToken);
           }
 
-          apiClient.defaults.headers.common.Authorization = `Bearer ${newTokens.accessToken}`;
           originalRequest.headers.Authorization = `Bearer ${newTokens.accessToken}`;
 
           processQueue(null, newTokens.accessToken);
@@ -129,7 +131,9 @@ apiClient.interceptors.response.use(
         }
       } catch (refreshErr) {
         processQueue(refreshErr, null);
-        await SecureTokenStorage.clearTokens();
+        if ([400, 401, 403].includes(axios.isAxiosError(refreshErr) ? refreshErr.response?.status ?? 0 : 0)) {
+          await SecureTokenStorage.clearTokens();
+        }
         return Promise.reject(normalizeError(refreshErr));
       } finally {
         isRefreshing = false;

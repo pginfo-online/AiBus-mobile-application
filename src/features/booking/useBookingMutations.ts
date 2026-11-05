@@ -76,7 +76,7 @@ export interface CreateCheckoutSessionPayload extends CreateBookingPayload {
 
 export interface CheckoutSessionResponse {
   booking: BookingResponseData;
-  paymentIntent: PaymentIntentResponse;
+  paymentIntent: PaymentIntentResponse | null;
 }
 
 export function useHoldSeatsMutation() {

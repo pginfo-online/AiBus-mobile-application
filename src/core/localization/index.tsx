@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useMemo } from 'react';
+import React, { createContext, useContext, useMemo } from 'react';
+import { useAppStore } from '../../stores/appStore';
 import { translations, SupportedLanguage } from './translations';
 export { translations, SupportedLanguage };
 
@@ -15,14 +16,15 @@ const LanguageContext = createContext<LanguageContextValue>({
 });
 
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [language, setLanguage] = useState<SupportedLanguage>('en');
+  const language = useAppStore((state) => state.language);
+  const setLanguage = useAppStore((state) => state.setLanguage);
 
   const t = useMemo(() => {
     return (key: string, params?: Record<string, string | number>): string => {
       let text = translations[language]?.[key] || translations.en[key] || key;
       if (params) {
         Object.entries(params).forEach(([paramKey, val]) => {
-          text = text.replace(new RegExp(`\\{${paramKey}\\}`, 'g'), String(val));
+          text = text.replace(new RegExp(`\\{${paramKey}\\}`, 'g'), () => String(val));
         });
       }
       return text;

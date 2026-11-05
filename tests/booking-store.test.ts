@@ -2,18 +2,20 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { useBookingStore } from '../src/stores/bookingStore.ts';
 
-test('booking store initializes with default cities', () => {
+test('booking store requires cities from the provider catalog', () => {
   const state = useBookingStore.getState();
-  assert.strictEqual(state.fromCity.name, 'Mumbai');
-  assert.strictEqual(state.toCity.name, 'Pune');
+  assert.strictEqual(state.fromCity.providerCityId, 0);
+  assert.strictEqual(state.toCity.providerCityId, 0);
   assert.strictEqual(state.selectedSeats.length, 0);
   assert.strictEqual(state.activeHold, null);
 });
 
 test('swapCities exchanges fromCity and toCity', () => {
   const store = useBookingStore.getState();
-  const initialFrom = store.fromCity;
-  const initialTo = store.toCity;
+  const initialFrom = { id: 'a', providerCityId: 1, name: 'Mumbai' };
+  const initialTo = { id: 'b', providerCityId: 2, name: 'Pune' };
+  store.setFromCity(initialFrom);
+  store.setToCity(initialTo);
 
   store.swapCities();
 

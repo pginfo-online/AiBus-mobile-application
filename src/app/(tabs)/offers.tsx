@@ -1,3 +1,4 @@
+import { AppErrorState } from '../../design-system';
 import React, { useState, useMemo } from 'react';
 import {
   View,
@@ -32,7 +33,7 @@ export default function OffersScreen() {
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>('All');
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
-  const { data: offers = [], isLoading, refetch, isRefetching } = useOffersQuery(
+  const { data: offers = [], isLoading, isError, refetch, isRefetching } = useOffersQuery(
     selectedCategory === 'All' ? undefined : selectedCategory
   );
 
@@ -263,7 +264,10 @@ export default function OffersScreen() {
           );
         })}
 
-        {filteredOffers.length === 0 && !isLoading && (
+        {isError && offers.length === 0 && (
+          <AppErrorState error="Could not load offers." onRetry={() => { void refetch(); }} />
+        )}
+        {filteredOffers.length === 0 && !isLoading && !isError && (
           <View style={styles.emptyContainer}>
             <Ionicons name="pricetags-outline" size={48} color="#94A3B8" />
             <AppText variant="bodyLargeBold" style={{ color: '#475569', marginTop: 12 }}>

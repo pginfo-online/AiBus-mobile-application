@@ -37,7 +37,9 @@ export const translations: Record<SupportedLanguage, Record<string, string>> = {
     // City Search
     'city.search_placeholder': 'Enter city or station name',
     'city.popular': 'Popular Cities',
+    'city.results': 'Search results',
     'city.no_results': 'No cities found matching your search',
+    'city.try_again': 'Check the spelling or search for another city.',
 
     // Bus Results
     'buses.title': 'Buses',
@@ -219,7 +221,9 @@ export const translations: Record<SupportedLanguage, Record<string, string>> = {
     // City Search
     'city.search_placeholder': 'शहर या स्टेशन का नाम दर्ज करें',
     'city.popular': 'लोकप्रिय शहर',
+    'city.results': 'खोज परिणाम',
     'city.no_results': 'कोई शहर नहीं मिला',
+    'city.try_again': 'वर्तनी जाँचें या कोई दूसरा शहर खोजें।',
 
     // Bus Results
     'buses.title': 'उपलब्ध बसें',
@@ -401,7 +405,9 @@ export const translations: Record<SupportedLanguage, Record<string, string>> = {
     // City Search
     'city.search_placeholder': 'शहर किंवा स्थानकाचे नाव प्रविष्ट करा',
     'city.popular': 'लोकप्रिय शहरे',
+    'city.results': 'शोध निकाल',
     'city.no_results': 'कोणतेही शहर आढळले नाही',
+    'city.try_again': 'शब्दलेखन तपासा किंवा दुसरे शहर शोधा.',
 
     // Bus Results
     'buses.title': 'उपलब्ध बसेस',

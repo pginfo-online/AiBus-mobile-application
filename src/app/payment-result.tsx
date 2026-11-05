@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { StyleSheet, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -11,75 +11,51 @@ import { PendingPaymentStorage } from '../core/storage';
 export default function PaymentResultScreen() {
   const router = useRouter();
   const { colors, spacing } = useAppTheme();
-  const params = useLocalSearchParams<Record<string, string>>();
-  const hasExecutedRef = useRef(false);
+  const { bookingId, merchantTxnId, gatewayOrderId, gatewayPaymentId, gatewaySignature,
+    razorpay_order_id, razorpay_payment_id, razorpay_signature, status,
+  } = useLocalSearchParams<Record<string, string>>();
 
   useEffect(() => {
-    let isMounted = true;
+    let mounted = true;
 
     async function processOutcome() {
-      if (hasExecutedRef.current) return;
-      hasExecutedRef.current = true;
-
       const pending = await PendingPaymentStorage.get();
-      const mTxnId = params.merchantTxnId || pending?.merchantTxnId || '';
-      const bId = params.bookingId || pending?.bookingId || '';
-
-      const parsed = parseRazorpayCallbackParams(params, mTxnId);
-      PaymentCoordinator.setHandledByDeepLink(true);
-      PaymentCoordinator.notifyResult(parsed);
-
-      if (!isMounted) return;
-
-      const canNavigate = PaymentCoordinator.claimNavigationLock();
-      if (!canNavigate) {
-        // Navigation already handled by coordinator
+      if (!mounted) return;
+      const transactionId = merchantTxnId || pending?.merchantTxnId;
+      const id = bookingId || (pending?.merchantTxnId === transactionId ? pending?.bookingId : undefined);
+      if (!id || !transactionId) {
+        router.replace('/(tabs)/bookings');
         return;
       }
 
-      if (parsed.status === 'SUCCESS' || (parsed.gatewayPaymentId && parsed.gatewaySignature)) {
-        if (pending) {
-          await PendingPaymentStorage.set({
-            ...pending,
-            bookingId: bId || pending.bookingId,
-            merchantTxnId: mTxnId || pending.merchantTxnId,
-            gatewayOrderId: parsed.gatewayOrderId || pending.gatewayOrderId,
-            gatewayPaymentId: parsed.gatewayPaymentId || pending.gatewayPaymentId,
-            gatewaySignature: parsed.gatewaySignature || pending.gatewaySignature,
-          });
-        }
+      const result = parseRazorpayCallbackParams({
+        gatewayOrderId, gatewayPaymentId, gatewaySignature, razorpay_order_id,
+        razorpay_payment_id, razorpay_signature, status,
+      }, transactionId);
+      PaymentCoordinator.setHandledByDeepLink(true);
+      PaymentCoordinator.notifyResult(result);
 
-        router.replace({
-          pathname: '/booking/processing' as any,
-          params: {
-            bookingId: bId,
-            merchantTxnId: mTxnId,
-            gatewayOrderId: parsed.gatewayOrderId || '',
-            gatewayPaymentId: parsed.gatewayPaymentId || '',
-            gatewaySignature: parsed.gatewaySignature || '',
-          },
-        });
-      } else if (parsed.status === 'CANCELLED') {
-        router.replace('/booking/review' as any);
-      } else {
-        router.replace({
-          pathname: '/booking/processing' as any,
-          params: {
-            bookingId: bId,
-            merchantTxnId: mTxnId,
-            errorDescription: parsed.errorDescription || 'Payment was declined',
-            status: 'FAILED',
-          },
+      if (pending?.bookingId === id && pending.merchantTxnId === transactionId && result.gatewayPaymentId) {
+        await PendingPaymentStorage.set({
+          ...pending,
+          gatewayOrderId: result.gatewayOrderId || pending.gatewayOrderId,
+          gatewayPaymentId: result.gatewayPaymentId,
+          gatewaySignature: result.gatewaySignature || pending.gatewaySignature,
         });
       }
+      if (!mounted) return;
+      router.replace({
+        pathname: '/booking/processing',
+        params: { bookingId: id, merchantTxnId: transactionId },
+      });
     }
 
-    processOutcome();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [params, router]);
+    void processOutcome();
+    return () => { mounted = false; };
+  }, [
+    bookingId, merchantTxnId, gatewayOrderId, gatewayPaymentId, gatewaySignature,
+    razorpay_order_id, razorpay_payment_id, razorpay_signature, status, router,
+  ]);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>

@@ -45,7 +45,6 @@ export default function TicketDetailsScreen() {
   const [showViewTicketModal, setShowViewTicketModal] = useState<boolean>(false);
   const [showFullDocModal, setShowFullDocModal] = useState<boolean>(false);
   const [showCancelModal, setShowCancelModal] = useState<boolean>(false);
-  const [calendarAdded, setCalendarAdded] = useState<boolean>(false);
 
   const booking = ticket?.booking;
 
@@ -91,19 +90,6 @@ export default function TicketDetailsScreen() {
     await generateAndShareTicketPdf(ticket);
   };
 
-  const handleAddToCalendar = () => {
-    try {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch {
-      // Safe fallback
-    }
-    setCalendarAdded(true);
-    Alert.alert(
-      'Added to Calendar',
-      `Your trip from ${booking?.fromCityName} to ${booking?.toCityName} on ${booking?.journeyDate} has been saved to your schedule.`
-    );
-  };
-
   if (isLoading && !ticket) {
     return (
       <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
@@ -127,7 +113,7 @@ export default function TicketDetailsScreen() {
   const isConfirmed = booking.status === 'CONFIRMED';
   const isCancelled = booking.status === 'CANCELLED';
   const primaryPassenger = booking.passengers?.[0]?.name || booking.contactName;
-  const primarySeat = booking.seats?.[0]?.seatNo || booking.passengers?.[0]?.seatNo || '1U';
+  const primarySeat = booking.seats?.[0]?.seatNo || booking.passengers?.[0]?.seatNo || '—';
 
   // Status text for middle of connector
   let tripStatusText = 'Trip Completed';
@@ -232,12 +218,12 @@ export default function TicketDetailsScreen() {
                       {booking.fromCityName}
                     </AppText>
                     <AppText variant="caption" style={{ color: '#94A3B8', marginTop: 2 }}>
-                      {booking.pickupLocation || 'Opp. Chandani Chowk Bus Stop'}
+                      {booking.pickupLocation || '—'}
                     </AppText>
                   </View>
                   <View style={styles.timeWrap}>
                     <AppText variant="heading2" style={{ color: '#FFFFFF', fontWeight: '800' }}>
-                      {booking.pickupTime || '22:25'}
+                      {booking.pickupTime || '—'}
                     </AppText>
                     <AppText variant="caption" style={{ color: '#94A3B8', marginTop: 2, textAlign: 'right' }}>
                       {formatDateShort(booking.journeyDate)}
@@ -273,12 +259,12 @@ export default function TicketDetailsScreen() {
                       {booking.toCityName}
                     </AppText>
                     <AppText variant="caption" style={{ color: '#94A3B8', marginTop: 2 }}>
-                      {booking.dropoffLocation || 'Gandhi Square'}
+                      {booking.dropoffLocation || '—'}
                     </AppText>
                   </View>
                   <View style={styles.timeWrap}>
                     <AppText variant="heading2" style={{ color: '#FFFFFF', fontWeight: '800' }}>
-                      {booking.dropoffTime || '07:30'}
+                      {booking.dropoffTime || '—'}
                     </AppText>
                     <AppText variant="caption" style={{ color: '#94A3B8', marginTop: 2, textAlign: 'right' }}>
                       {formatDateShort(booking.journeyDate)}
@@ -334,53 +320,6 @@ export default function TicketDetailsScreen() {
               </View>
             </View>
 
-            {/* 4. Action Cards below Ticket matching ref-2.png */}
-            {/* Add trip to calendar */}
-            <Pressable
-              onPress={handleAddToCalendar}
-              style={({ pressed }) => [
-                styles.actionCard,
-                shadows.sm,
-                { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? 0.8 : 1 },
-              ]}
-            >
-              <View style={styles.actionCardLeft}>
-                <Ionicons name="calendar-outline" size={24} color={colors.text} />
-                <AppText
-                  variant="bodyLargeBold"
-                  style={{
-                    color: colors.text,
-                    marginLeft: 14,
-                    textDecorationLine: 'underline',
-                  }}
-                >
-                  {calendarAdded ? 'Trip added to calendar' : 'Add trip to calendar'}
-                </AppText>
-              </View>
-              <Ionicons
-                name={calendarAdded ? 'checkmark-circle' : 'add'}
-                size={22}
-                color={calendarAdded ? colors.success : colors.text}
-              />
-            </Pressable>
-
-            {/* Scratch Cards Rewards Banner matching ref-2.png */}
-            <View style={[styles.rewardsBannerCard, shadows.sm]}>
-              <View style={{ flex: 1 }}>
-                <AppText variant="caption" style={{ color: '#92400E', fontWeight: '700' }}>
-                  Congratulations
-                </AppText>
-                <AppText variant="heading3" style={{ color: '#78350F', marginTop: 2, fontWeight: '800' }}>
-                  You won scratch cards
-                </AppText>
-              </View>
-
-              {/* Gift box icon */}
-              <View style={styles.giftBoxIconCircle}>
-                <Ionicons name="gift" size={26} color="#FFFFFF" />
-              </View>
-            </View>
-
             {/* 5. Production-Grade Cancel Ticket Module Card */}
             {isConfirmed && (
               <AppCard
@@ -394,7 +333,7 @@ export default function TicketDetailsScreen() {
                   </View>
                   <View style={{ marginLeft: 12, flex: 1 }}>
                     <AppText variant="bodyLargeBold" style={{ color: colors.text }}>
-                      Cancel Ticket & Instant Refund
+                      Cancel Ticket & Review Refund
                     </AppText>
                     <AppText variant="caption" style={{ color: colors.textSecondary, marginTop: 2 }}>
                       Refunds are credited directly to your AiBus Wallet immediately upon cancellation.
@@ -547,7 +486,7 @@ export default function TicketDetailsScreen() {
                     24x7 AiBus Support
                   </AppText>
                   <AppText variant="caption" style={{ color: colors.textSecondary }}>
-                    We are here to assist with boarding, cancellations, and wallet refunds
+                    We are here to assist with boarding, cancellations, and refunds
                   </AppText>
                 </View>
               </View>
@@ -585,7 +524,7 @@ export default function TicketDetailsScreen() {
                   How do cancellation refunds work?
                 </AppText>
                 <AppText variant="caption" style={{ color: colors.textSecondary, marginTop: 4, lineHeight: 18 }}>
-                  When you cancel your ticket, the refundable amount calculated per operator policy is deposited instantly into your AiBus Wallet. You can use it right away.
+                  The operator policy determines your refund. Eligible refunds are sent to the original payment method.
                 </AppText>
               </View>
 

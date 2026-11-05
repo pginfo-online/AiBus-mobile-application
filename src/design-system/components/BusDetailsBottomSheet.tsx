@@ -36,11 +36,11 @@ export function BusDetailsBottomSheet({
   const { colors, radii } = useAppTheme();
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
 
-  React.useEffect(() => {
-    if (visible && initialTab) {
-      setActiveTab(initialTab);
-    }
-  }, [visible, initialTab]);
+  const [previousOptions, setPreviousOptions] = useState({ visible, initialTab });
+  if (previousOptions.visible !== visible || previousOptions.initialTab !== initialTab) {
+    setPreviousOptions({ visible, initialTab });
+    if (visible) setActiveTab(initialTab);
+  }
 
   const boardingPoints = chart?.BoardingPoints || bus?.BoardingPoints || [];
   const droppingPoints = chart?.DroppingPoints || bus?.DroppingPoints || [];

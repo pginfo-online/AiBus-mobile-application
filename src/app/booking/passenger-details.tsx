@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   View,
   ScrollView,
@@ -24,9 +24,7 @@ import { useBookingStore, PassengerItem } from '../../stores/bookingStore';
 import { useAuthStore } from '../../stores/authStore';
 import {
   useHoldSeatsMutation,
-  useCreateCheckoutSessionMutation,
 } from '../../features/booking/useBookingMutations';
-import { PendingPaymentStorage } from '../../core/storage';
 
 export default function PassengerDetailsScreen() {
   const router = useRouter();
@@ -44,14 +42,14 @@ export default function PassengerDetailsScreen() {
     selectedBoardingPoint,
     selectedDroppingPoint,
     setActiveHold,
-    setActiveBooking,
     setPassengers,
     setContactInfo,
     setGstDetails,
   } = useBookingStore();
 
   const holdMutation = useHoldSeatsMutation();
-  const checkoutSessionMutation = useCreateCheckoutSessionMutation();
+  const lockingSeats = useRef(false);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const [isLockingSeats, setIsLockingSeats] = useState(false);
 
   // Initialize passenger list per selected seat
@@ -60,7 +58,7 @@ export default function PassengerDetailsScreen() {
       seatNo: seat.seatNo,
       seatTypeId: seat.seatType,
       fare: seat.fare,
-      gender: 'M',
+      gender: seat.requiredGender ?? 'M',
       age: 28,
       name: idx === 0 && user ? `${user.firstName} ${user.lastName}`.trim() : '',
       isAcSeat: selectedBus?.IsAC ?? false,
@@ -90,26 +88,37 @@ export default function PassengerDetailsScreen() {
   };
 
   const handleProceed = () => {
+    if (lockingSeats.current) return;
+    if (!isAuthenticated) {
+      router.push('/(auth)/login');
+      return;
+    }
+    if (!selectedBus || !selectedBoardingPoint || !selectedDroppingPoint || !passengerForms.length) return;
     // 1. Validate passenger inputs
     for (let i = 0; i < passengerForms.length; i++) {
       const p = passengerForms[i];
+      const requiredGender = selectedSeats[i]?.requiredGender;
+      if (requiredGender && p.gender !== requiredGender) {
+        Alert.alert('Restricted seat', `Seat ${p.seatNo} is reserved for ${requiredGender === 'F' ? 'women' : 'men'}.`);
+        return;
+      }
       if (!p.name || p.name.trim().length < 2) {
         Alert.alert('Validation Error', `Please enter a valid name for Seat ${p.seatNo}.`);
         return;
       }
-      if (!p.age || isNaN(p.age) || p.age < 1 || p.age > 120) {
+      if (!Number.isInteger(p.age) || p.age < 1 || p.age > 120) {
         Alert.alert('Validation Error', `Please enter a valid age (1-120) for Seat ${p.seatNo}.`);
         return;
       }
     }
 
     // 2. Validate contact details
-    if (!contactEmail || !contactEmail.includes('@') || !contactEmail.includes('.')) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail.trim())) {
       Alert.alert('Validation Error', 'Please enter a valid email address for booking ticket.');
       return;
     }
 
-    if (!contactPhone || contactPhone.trim().length < 10) {
+    if (!/^[6-9]\d{9}$/.test(contactPhone.trim().replace(/^\+91\s*/, ''))) {
       Alert.alert('Validation Error', 'Please enter a valid 10-digit mobile number.');
       return;
     }
@@ -131,7 +140,7 @@ export default function PassengerDetailsScreen() {
     setContactInfo({
       name: contactName || passengerForms[0].name,
       email: contactEmail.trim().toLowerCase(),
-      phone: contactPhone.trim(),
+      phone: contactPhone.trim().replace(/^\+91\s*/, ''),
     });
 
     if (hasGst) {
@@ -142,6 +151,7 @@ export default function PassengerDetailsScreen() {
 
     // Early Lock: Hold seats on GDS and pre-create checkout session before mounting Review
     const lockSeatsAndProceed = async () => {
+      lockingSeats.current = true;
       setIsLockingSeats(true);
       try {
         const holdRes = await holdMutation.mutateAsync({
@@ -154,8 +164,8 @@ export default function PassengerDetailsScreen() {
           contactInfo: {
             customerName: contactName || passengerForms[0].name,
             email: contactEmail.trim().toLowerCase(),
-            phone: contactPhone.trim(),
-            mobile: contactPhone.trim(),
+            phone: contactPhone.trim().replace(/^\+91\s*/, ''),
+            mobile: contactPhone.trim().replace(/^\+91\s*/, ''),
           },
           gstDetails: hasGst && gstin ? { gstin: gstin.trim().toUpperCase(), gstCompany: gstCompany.trim() } : undefined,
           passengers: passengerForms.map((p) => ({
@@ -164,7 +174,7 @@ export default function PassengerDetailsScreen() {
             fare: p.fare,
             gender: p.gender,
             age: p.age,
-            name: p.name,
+            name: p.name.trim(),
             isAcSeat: p.isAcSeat,
           })),
         });
@@ -176,55 +186,6 @@ export default function PassengerDetailsScreen() {
           ttlSeconds: holdRes.ttlSeconds || 600,
           totalFare: holdRes.totalFare || selectedSeats.reduce((sum, s) => sum + s.fare, 0),
         });
-
-        // Pre-create checkout session for instantaneous Razorpay launch on Review
-        const baseFare = selectedSeats.reduce((sum, s) => sum + s.baseFare, 0);
-        const serviceTax = selectedSeats.reduce((sum, s) => sum + s.tax, 0);
-        const totalFare = holdRes.totalFare || selectedSeats.reduce((sum, s) => sum + s.fare, 0);
-
-        try {
-          const sessionRes = await checkoutSessionMutation.mutateAsync({
-            holdId: holdRes.id,
-            fromCityId: fromCity.providerCityId,
-            toCityId: toCity.providerCityId,
-            fromCityName: fromCity.name,
-            toCityName: toCity.name,
-            journeyDate,
-            busId: selectedBus.RouteBusId || selectedBus.BusId,
-            tripId: selectedBus.TripId || 'TRIP-DEFAULT',
-            pickupCode: selectedBoardingPoint?.code || '',
-            pickupLocation: selectedBoardingPoint?.name || '',
-            pickupTime: selectedBoardingPoint?.time || '',
-            dropoffCode: selectedDroppingPoint?.code || '',
-            dropoffLocation: selectedDroppingPoint?.name || '',
-            dropoffTime: selectedDroppingPoint?.time || '',
-            operatorName: selectedBus.CompanyName,
-            busType: selectedBus.BusTypeName,
-            totalFare,
-            baseFare,
-            serviceTax,
-            contactName: contactName || passengerForms[0].name,
-            contactEmail: contactEmail.trim().toLowerCase(),
-            contactPhone: contactPhone.trim(),
-            passengers: passengerForms,
-            cancellationPolicy: selectedBus.CancellationPolicy,
-            gateway: 'RAZORPAY',
-            paymentMode: 'UPI',
-          });
-
-          setActiveBooking(sessionRes.booking.id, sessionRes.booking.bookingNumber);
-
-          await PendingPaymentStorage.set({
-            bookingId: sessionRes.booking.id,
-            merchantTxnId: sessionRes.paymentIntent.merchantTxnId,
-            gatewayOrderId: sessionRes.paymentIntent.gatewayOrderId,
-            amount: sessionRes.paymentIntent.amount,
-            timestamp: Date.now(),
-            gateway: 'RAZORPAY',
-          });
-        } catch (sessionErr) {
-          console.warn('Checkout session pre-generation will fallback on Review:', sessionErr);
-        }
 
         router.push('/booking/review' as any);
       } catch (err: any) {
@@ -241,6 +202,7 @@ export default function PassengerDetailsScreen() {
           ]
         );
       } finally {
+        lockingSeats.current = false;
         setIsLockingSeats(false);
       }
     };

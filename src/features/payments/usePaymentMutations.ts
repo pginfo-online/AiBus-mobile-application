@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../core/api/client';
 import { BookingResponseData, TicketResponseData } from '../../types/api';
 
-export type PaymentGatewayType = 'RAZORPAY' | 'PHONEPE' | 'AUTO';
+export type PaymentGatewayType = 'RAZORPAY' | 'AUTO';
 export type PaymentModeType = 'UPI' | 'CARD' | 'NETBANKING' | 'WALLET' | 'ALL';
 
 export interface CreatePaymentIntentPayload {
@@ -17,7 +17,7 @@ export interface PaymentIntentResponse {
   merchantTxnId: string;
   amount: number;
   currency: string;
-  gateway: 'RAZORPAY' | 'PHONEPE';
+  gateway: 'RAZORPAY';
   paymentUrl: string;
   upiIntentUrl?: string;
   gatewayOrderId?: string;

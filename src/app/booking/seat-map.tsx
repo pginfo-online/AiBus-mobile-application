@@ -88,6 +88,7 @@ const SeatCell = React.memo(function SeatCell({
       fare: item.total_fare,
       baseFare: item.base_fare,
       tax: item.service_tax,
+      requiredGender: isFemale ? 'F' : isMale ? 'M' : undefined,
     });
   };
 
@@ -168,9 +169,10 @@ export default function SeatMapScreen() {
     selectedBus,
     selectedSeats,
     toggleSeat,
+    clearSeats,
   } = useBookingStore();
 
-  const busId = selectedBus?.RouteBusId || selectedBus?.BusId || 6903;
+  const busId = selectedBus?.RouteBusId || selectedBus?.BusId;
   const { data: chart, isLoading, isError, error, refetch } = useSeatChartQuery(busId, {
     fromCityId: fromCity.providerCityId,
     toCityId: toCity.providerCityId,
@@ -234,12 +236,27 @@ export default function SeatMapScreen() {
     return selectedSeats.reduce((sum, s) => sum + s.fare, 0);
   }, [selectedSeats]);
 
-  const handleProceed = () => {
+  const handleProceed = async () => {
     if (selectedSeats.length === 0) {
       Alert.alert('No Seats Selected', 'Please select at least 1 seat to proceed.');
       return;
     }
-    router.push('/booking/boarding-dropping' as any);
+    const { data: freshChart, isError: refreshFailed } = await refetch();
+    if (refreshFailed || !freshChart) {
+      Alert.alert('Could not check availability', 'Please try again.');
+      return;
+    }
+    const stillAvailable = selectedSeats.every((selected) => freshChart.Layout.some(
+      (seat) => seat.seat_no === selected.seatNo &&
+        seat.seat_status === (selected.requiredGender === 'F' ? 3 : selected.requiredGender === 'M' ? 2 : 1) &&
+        seat.total_fare === selected.fare
+    ));
+    if (!stillAvailable) {
+      clearSeats();
+      Alert.alert('Availability changed', 'Please select seats again from the updated map.');
+      return;
+    }
+    router.push('/booking/boarding-dropping');
   };
 
   const handleShare = async () => {
@@ -310,7 +327,7 @@ export default function SeatMapScreen() {
             Loading seat availability...
           </AppText>
         </View>
-      ) : isError ? (
+      ) : isError || !busId ? (
         <AppErrorState
           error={error}
           title="Could not load seat map"
@@ -496,7 +513,7 @@ export default function SeatMapScreen() {
               style={[styles.highlightPillCard, { backgroundColor: '#F5F3FF', marginLeft: 8 }]}
             >
               <AppText variant="bodySmallMedium" style={{ color: '#1E293B', fontWeight: '700' }}>
-                Women's Choice
+                Women&apos;s Choice
               </AppText>
               <AppText variant="caption" style={{ color: '#64748B' }}>
                 Highly rated

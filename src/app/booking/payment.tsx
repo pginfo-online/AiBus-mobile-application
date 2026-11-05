@@ -1,3 +1,5 @@
+import { PaymentCoordinator } from '../../features/payments/PaymentCoordinator';
+import type { ThemeColors } from '../../design-system/tokens/colors';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
@@ -15,7 +17,6 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import * as WebBrowser from 'expo-web-browser';
 import { useAppTheme } from '../../design-system/theme';
 import {
   AppText,
@@ -29,17 +30,13 @@ import { useBookingStore } from '../../stores/bookingStore';
 import { useAuthStore } from '../../stores/authStore';
 import {
   useCreateCheckoutSessionMutation,
-  useCreateBookingMutation,
 } from '../../features/booking/useBookingMutations';
 import {
-  useCreatePaymentIntentMutation,
   PaymentGatewayType,
   PaymentModeType,
 } from '../../features/payments/usePaymentMutations';
-import { useValidateCouponMutation } from '../../features/offers';
-import { useWalletQuery } from '../../features/wallet/useWalletQuery';
+import { useOffersQuery, useValidateCouponMutation } from '../../features/offers';
 import { RazorpayService } from '../../features/payments/RazorpayService';
-import { PaymentCoordinator } from '../../features/payments/PaymentCoordinator';
 import { PendingPaymentStorage } from '../../core/storage';
 import { AppliedCoupon } from '../../types/api';
 
@@ -55,16 +52,6 @@ type PaymentMethodOption = {
 };
 
 const PAYMENT_METHODS: PaymentMethodOption[] = [
-  {
-    id: 'phonepe_upi',
-    title: 'PhonePe UPI',
-    subtitle: 'Pay directly using PhonePe UPI app',
-    icon: 'flash-outline',
-    gateway: 'PHONEPE',
-    paymentMode: 'UPI',
-    badge: 'Fastest',
-    isPreferred: true,
-  },
   {
     id: 'razorpay_upi',
     title: 'UPI (GPay / Paytm / CRED / BHIM)',
@@ -92,14 +79,13 @@ const PAYMENT_METHODS: PaymentMethodOption[] = [
   },
 ];
 
-const RECOMMENDED_COUPONS = ['BUS300', 'PRIMODAY', 'AIBUS50'];
-
 export default function PaymentScreen() {
   const router = useRouter();
   const { colors, spacing, radii, shadows } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { t } = useTranslation();
 
-  const user = useAuthStore((s) => s.user);
+  const userId = useAuthStore((state) => state.user?.id);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   const {
@@ -114,29 +100,20 @@ export default function PaymentScreen() {
     contactName,
     contactEmail,
     contactPhone,
-    gstin,
-    gstCompany,
     activeHold,
-    activeBookingId,
-    activeBookingNumber,
     appliedCoupon,
-    useWallet,
     setActiveBooking,
     applyCoupon,
     removeCoupon,
-    setUseWallet,
   } = useBookingStore();
 
-  const { data: walletData } = useWalletQuery(isAuthenticated);
-  const walletBalance = Number(walletData?.walletBalance || user?.walletBalance || 0);
-
+  const { data: offers } = useOffersQuery('Bus');
+  const recommendedCoupons = offers?.slice(0, 3).map((offer) => offer.code) ?? [];
   const validateCouponMutation = useValidateCouponMutation();
   const checkoutSessionMutation = useCreateCheckoutSessionMutation();
-  const createBookingMutation = useCreateBookingMutation();
-  const createIntentMutation = useCreatePaymentIntentMutation();
 
-  const [selectedMethodId, setSelectedMethodId] = useState<string>('phonepe_upi');
-  const [secondsRemaining, setSecondsRemaining] = useState<number>(600);
+  const [selectedMethodId, setSelectedMethodId] = useState<string>('razorpay_upi');
+  const [secondsRemaining, setSecondsRemaining] = useState(0);
   const [isProcessingPayment, setIsProcessingPayment] = useState<boolean>(false);
   const isInitiatingRef = useRef<boolean>(false);
 
@@ -173,41 +150,19 @@ export default function PaymentScreen() {
   // Fare after coupon
   const fareAfterCoupon = Math.max(0, totalFare - couponDiscountAmount);
 
-  // Wallet deduction computation
-  const walletDeductionAmount = useMemo(() => {
-    if (!useWallet || walletBalance <= 0) return 0;
-    return Math.min(walletBalance, fareAfterCoupon);
-  }, [useWallet, walletBalance, fareAfterCoupon]);
-
-  // Final Payable Amount
-  const finalPayableAmount = Math.max(0, Math.round((fareAfterCoupon - walletDeductionAmount) * 100) / 100);
+  const finalPayableAmount = Math.max(0, Math.round(fareAfterCoupon * 100) / 100);
 
   // Active Hold Countdown Timer (RedBus / AbhiBus standard)
   useEffect(() => {
     if (!activeHold?.expiresAt) return;
 
-    const interval = setInterval(() => {
-      const remainingMs = new Date(activeHold.expiresAt).getTime() - Date.now();
-      const remainingSecs = Math.max(0, Math.floor(remainingMs / 1000));
-      setSecondsRemaining(remainingSecs);
-
-      if (remainingSecs <= 0) {
-        clearInterval(interval);
-        Alert.alert(
-          'Seat Hold Expired',
-          'Your 10-minute seat hold time has expired. Please reselect your seats to ensure availability.',
-          [
-            {
-              text: 'OK',
-              onPress: () => router.navigate('/booking/seat-map' as any),
-            },
-          ]
-        );
-      }
-    }, 1000);
-
+    const update = () => setSecondsRemaining(Math.max(
+      0, Math.floor((new Date(activeHold.expiresAt).getTime() - Date.now()) / 1000)
+    ));
+    update();
+    const interval = setInterval(update, 1000);
     return () => clearInterval(interval);
-  }, [activeHold?.expiresAt, router]);
+  }, [activeHold?.expiresAt]);
 
   const formattedTimer = `${Math.floor(secondsRemaining / 60)}:${String(
     secondsRemaining % 60
@@ -228,6 +183,7 @@ export default function PaymentScreen() {
 
   const handleApplyCoupon = async (codeToApply?: string) => {
     const rawCode = codeToApply || couponInput;
+    if (isInitiatingRef.current) return;
     const cleanCode = rawCode.trim().toUpperCase();
 
     if (!cleanCode) {
@@ -251,7 +207,7 @@ export default function PaymentScreen() {
         toCityId: toCity.providerCityId,
       });
 
-      if (res.valid && res.coupon) {
+      if (res.valid && res.coupon && Number(res.finalPayableAmount) >= 1) {
         applyCoupon({
           code: res.coupon.code,
           title: res.coupon.title,
@@ -265,7 +221,7 @@ export default function PaymentScreen() {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         } catch {}
       } else {
-        setCouponError(res.message || 'Invalid coupon code for this booking.');
+        setCouponError(res.valid ? 'Razorpay requires a payable fare of at least ₹1.' : res.message || 'Invalid coupon code for this booking.');
         try {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         } catch {}
@@ -292,14 +248,18 @@ export default function PaymentScreen() {
   // Exit Modal Discount Application
   const handleExitModalApplyAndBook = async () => {
     setExitModalVisible(false);
-    // Apply AIBUS50
-    await handleApplyCoupon('AIBUS50');
+    if (recommendedCoupons[0]) await handleApplyCoupon(recommendedCoupons[0]);
   };
 
   const handlePay = async () => {
-    if (isInitiatingRef.current || isProcessingPayment) return;
+    if (isInitiatingRef.current || isProcessingPayment || validateCouponMutation.isPending) return;
 
-    if (secondsRemaining <= 10) {
+    if (!isAuthenticated) {
+      router.push('/(auth)/login');
+      return;
+    }
+    if (!activeHold || !selectedBus || !selectedBoardingPoint || !selectedDroppingPoint || !passengers.length ||
+        new Date(activeHold.expiresAt).getTime() <= Date.now()) {
       Alert.alert('Hold Expired', 'Seat hold has expired. Please select your seats again.');
       router.navigate('/booking/seat-map' as any);
       return;
@@ -316,11 +276,6 @@ export default function PaymentScreen() {
     setIsProcessingPayment(true);
 
     try {
-      // 1. Create or resolve consolidated checkout session with backend authoritative calculations
-      let bookingId = activeBookingId;
-      let bookingNumber = activeBookingNumber;
-      let paymentIntent: any = null;
-
       const sessionRes = await checkoutSessionMutation.mutateAsync({
         holdId: activeHold?.id,
         fromCityId: fromCity.providerCityId,
@@ -342,110 +297,65 @@ export default function PaymentScreen() {
         baseFare: baseTicketFare,
         serviceTax: taxFare,
         contactName: contactName || passengers[0]?.name || 'Passenger',
-        contactEmail: contactEmail || 'booking@aibus.in',
-        contactPhone: contactPhone || '9876543210',
+        contactEmail,
+        contactPhone,
         passengers,
         cancellationPolicy: selectedBus?.CancellationPolicy,
         couponCode: appliedCoupon?.code,
-        useWallet,
         gateway: selectedOption.gateway,
         paymentMode: selectedOption.paymentMode,
       });
 
-      bookingId = sessionRes.booking.id;
-      bookingNumber = sessionRes.booking.bookingNumber;
-      paymentIntent = sessionRes.paymentIntent;
-
-      setActiveBooking(bookingId, bookingNumber);
-
-      // Scenario A: Free booking (covered 100% by wallet/coupon)
-      if (!paymentIntent || paymentIntent.amount === 0 || finalPayableAmount === 0) {
-        if (PaymentCoordinator.claimNavigationLock()) {
-          router.replace({
-            pathname: '/booking/processing' as any,
-            params: {
-              bookingId,
-              merchantTxnId: `TXN-FREE-${Date.now()}`,
-              amount: '0',
-              status: 'SUCCESS',
-            },
-          });
-        }
-        return;
+      const { booking, paymentIntent } = sessionRes;
+      setActiveBooking(booking.id, booking.bookingNumber);
+      if (!paymentIntent) {
+        throw new Error('This booking does not have a Razorpay payment order.');
       }
 
-      // Scenario B: Gateway Payment Intent Persisted
-      await PendingPaymentStorage.set({
-        bookingId,
+      const pending = {
+        userId,
+        bookingId: booking.id,
         merchantTxnId: paymentIntent.merchantTxnId,
         gatewayOrderId: paymentIntent.gatewayOrderId,
         amount: paymentIntent.amount,
         timestamp: Date.now(),
         gateway: paymentIntent.gateway,
-      });
+      };
+      await PendingPaymentStorage.set(pending);
+      const result = await RazorpayService.openCheckout(paymentIntent);
+      if (PaymentCoordinator.isHandledByDeepLink()) return;
 
-      // Scenario C: Launch Payment Gateway
-      if (selectedOption.gateway === 'PHONEPE') {
-        // PhonePe UPI / Web Flow
-        if (paymentIntent.paymentUrl) {
-          const authResult = await WebBrowser.openAuthSessionAsync(
-            paymentIntent.paymentUrl,
-            'aibus://payment-result'
-          );
-
-          if (PaymentCoordinator.claimNavigationLock()) {
-            router.replace({
-              pathname: '/booking/processing' as any,
-              params: {
-                bookingId,
-                merchantTxnId: paymentIntent.merchantTxnId,
-                amount: String(paymentIntent.amount),
-                gateway: 'PHONEPE',
-                status: authResult.type === 'cancel' || authResult.type === 'dismiss' ? 'PENDING' : 'SUCCESS',
-              },
-            });
-          }
-        }
+      if (result.status === 'SUCCESS' && result.gatewayPaymentId) {
+        await PendingPaymentStorage.set({
+          ...pending,
+          gatewayOrderId: result.gatewayOrderId || pending.gatewayOrderId,
+          gatewayPaymentId: result.gatewayPaymentId,
+          gatewaySignature: result.gatewaySignature,
+        });
+        router.replace({
+          pathname: '/booking/processing',
+          params: { bookingId: booking.id, merchantTxnId: paymentIntent.merchantTxnId },
+        });
+      } else if (result.status === 'PENDING') {
+        router.replace({
+          pathname: '/booking/processing',
+          params: { bookingId: booking.id, merchantTxnId: paymentIntent.merchantTxnId },
+        });
       } else {
-        // Razorpay SDK / Standard Checkout
-        const checkoutResult = await RazorpayService.openCheckout(paymentIntent);
-
-        if (checkoutResult.status === 'SUCCESS' && checkoutResult.gatewayPaymentId) {
-          await PendingPaymentStorage.set({
-            bookingId,
-            merchantTxnId: checkoutResult.merchantTxnId,
-            amount: paymentIntent.amount,
-            timestamp: Date.now(),
-            gateway: 'RAZORPAY',
-            gatewayOrderId: checkoutResult.gatewayOrderId,
-            gatewayPaymentId: checkoutResult.gatewayPaymentId,
-            gatewaySignature: checkoutResult.gatewaySignature,
-          });
-
-          if (PaymentCoordinator.claimNavigationLock()) {
-            router.replace({
-              pathname: '/booking/processing' as any,
-              params: {
-                bookingId,
-                merchantTxnId: checkoutResult.merchantTxnId,
-                amount: String(paymentIntent.amount),
-                gatewayOrderId: checkoutResult.gatewayOrderId || '',
-                gatewayPaymentId: checkoutResult.gatewayPaymentId || '',
-                gatewaySignature: checkoutResult.gatewaySignature || '',
-              },
-            });
-          }
-        } else if (checkoutResult.status === 'CANCELLED') {
-          Alert.alert(
-            'Payment Cancelled',
-            'Your seat hold is still active for a few minutes. Tap Pay whenever you are ready.'
-          );
-        } else {
-          Alert.alert(
-            'Payment Failed',
-            checkoutResult.errorDescription || 'Payment was declined. Please try another method.'
-          );
-        }
+        Alert.alert(
+          result.status === 'CANCELLED' ? 'Payment Cancelled' : 'Payment Could Not Be Completed',
+          result.errorDescription || 'Check the booking status before trying to pay again.',
+          [
+            { text: 'Close', style: 'cancel' },
+            {
+              text: 'Check Status',
+              onPress: () => router.replace({
+                pathname: '/booking/processing',
+                params: { bookingId: booking.id, merchantTxnId: paymentIntent.merchantTxnId },
+              }),
+            },
+          ],
+        );
       }
     } catch (err: any) {
       const msg =
@@ -460,7 +370,7 @@ export default function PaymentScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: '#F8FAFC' }]} edges={['top', 'bottom']}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
       {/* 1. Top Header matching ref-5 */}
       <View style={styles.topHeader}>
         <Pressable
@@ -473,10 +383,10 @@ export default function PaymentScreen() {
         </Pressable>
 
         <View style={{ flex: 1, marginLeft: 12 }}>
-          <AppText variant="caption" style={{ color: '#64748B', fontWeight: '500' }}>
+          <AppText variant="caption" style={{ color: colors.textSecondary, fontWeight: '500' }}>
             To Pay
           </AppText>
-          <AppText variant="heading2" style={{ color: '#0F172A', fontWeight: '800' }}>
+          <AppText variant="heading2" style={{ color: colors.text, fontWeight: '800' }}>
             ₹{finalPayableAmount.toFixed(2)}
           </AppText>
         </View>
@@ -499,7 +409,7 @@ export default function PaymentScreen() {
         style={[
           styles.timerBar,
           {
-            backgroundColor: isExpiringSoon ? '#FEE2E2' : '#FEF3C7',
+            backgroundColor: isExpiringSoon ? colors.dangerSoft : colors.warningSoft,
             borderBottomColor: isExpiringSoon ? '#FCA5A5' : '#FDE68A',
           },
         ]}
@@ -540,7 +450,7 @@ export default function PaymentScreen() {
         <View style={styles.sectionCard}>
           <View style={styles.sectionTitleRow}>
             <Ionicons name="pricetag" size={18} color="#D92D20" />
-            <AppText variant="bodyLargeBold" style={{ marginLeft: 8, color: '#0F172A' }}>
+            <AppText variant="bodyLargeBold" style={{ marginLeft: 8, color: colors.text }}>
               Have a coupon code?
             </AppText>
           </View>
@@ -594,7 +504,7 @@ export default function PaymentScreen() {
                   style={({ pressed }) => [
                     styles.applyButton,
                     {
-                      backgroundColor: couponInput.trim() ? '#D92D20' : '#E2E8F0',
+                      backgroundColor: couponInput.trim() ? '#D92D20' : colors.border,
                       opacity: pressed ? 0.8 : 1,
                     },
                   ]}
@@ -607,7 +517,7 @@ export default function PaymentScreen() {
                     <AppText
                       variant="bodySmallMedium"
                       style={{
-                        color: couponInput.trim() ? '#FFFFFF' : '#94A3B8',
+                        color: couponInput.trim() ? '#FFFFFF' : colors.textMuted,
                         fontWeight: '700',
                       }}
                     >
@@ -625,10 +535,10 @@ export default function PaymentScreen() {
 
               {/* Recommended Quick Chips */}
               <View style={styles.quickChipsRow}>
-                <AppText variant="caption" style={{ color: '#64748B', marginRight: 6 }}>
+                <AppText variant="caption" style={{ color: colors.textSecondary, marginRight: 6 }}>
                   Quick apply:
                 </AppText>
-                {RECOMMENDED_COUPONS.map((code) => (
+                {recommendedCoupons.map((code) => (
                   <Pressable
                     key={code}
                     onPress={() => handleApplyCoupon(code)}
@@ -647,63 +557,9 @@ export default function PaymentScreen() {
           )}
         </View>
 
-        {/* 5. AiBus Wallet Section matching ref-5 */}
-        <View style={styles.sectionCard}>
-          <Pressable
-            onPress={() => {
-              if (walletBalance > 0) {
-                try {
-                  Haptics.selectionAsync();
-                } catch {}
-                setUseWallet(!useWallet);
-              }
-            }}
-            style={styles.walletToggleRow}
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: useWallet }}
-          >
-            <View style={styles.walletCheckbox}>
-              <Ionicons
-                name={useWallet ? 'checkbox' : 'square-outline'}
-                size={22}
-                color={useWallet ? '#0D9488' : '#94A3B8'}
-              />
-            </View>
-
-            <View style={{ flex: 1, marginLeft: 10 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <AppText variant="bodyLargeBold" style={{ color: '#0F172A' }}>
-                  AiBus Wallet
-                </AppText>
-                {walletBalance > 0 && (
-                  <AppBadge
-                    label={`₹${walletBalance.toFixed(2)}`}
-                    variant="success"
-                    size="sm"
-                    style={{ marginLeft: 8 }}
-                  />
-                )}
-              </View>
-              <AppText variant="caption" style={{ color: '#64748B', marginTop: 2 }}>
-                {walletBalance > 0
-                  ? `Available balance: ₹${walletBalance.toFixed(2)}`
-                  : 'Zero balance · Cashbacks will be credited here'}
-              </AppText>
-            </View>
-
-            {useWallet && walletDeductionAmount > 0 && (
-              <View style={styles.walletUsingBadge}>
-                <AppText variant="caption" style={{ color: '#0D9488', fontWeight: '700' }}>
-                  Using ₹{walletDeductionAmount.toFixed(2)}
-                </AppText>
-              </View>
-            )}
-          </Pressable>
-        </View>
-
         {/* 6. Payment Methods matching ref-5 */}
         <View style={styles.sectionCard}>
-          <AppText variant="heading3" style={{ color: '#0F172A', fontWeight: '800', marginBottom: 12 }}>
+          <AppText variant="heading3" style={{ color: colors.text, fontWeight: '800', marginBottom: 12 }}>
             Payment Options
           </AppText>
 
@@ -730,7 +586,7 @@ export default function PaymentScreen() {
                 <View
                   style={[
                     styles.methodIconCircle,
-                    { backgroundColor: isSelected ? '#FEE2E2' : '#F1F5F9' },
+                    { backgroundColor: isSelected ? colors.dangerSoft : colors.divider },
                   ]}
                 >
                   <Ionicons
@@ -742,7 +598,7 @@ export default function PaymentScreen() {
 
                 <View style={{ flex: 1, marginLeft: 12 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <AppText variant="bodyLargeBold" style={{ color: '#0F172A' }}>
+                    <AppText variant="bodyLargeBold" style={{ color: colors.text }}>
                       {method.title}
                     </AppText>
                     {method.badge && (
@@ -754,7 +610,7 @@ export default function PaymentScreen() {
                       />
                     )}
                   </View>
-                  <AppText variant="caption" style={{ color: '#64748B', marginTop: 2 }}>
+                  <AppText variant="caption" style={{ color: colors.textSecondary, marginTop: 2 }}>
                     {method.subtitle}
                   </AppText>
                 </View>
@@ -773,10 +629,10 @@ export default function PaymentScreen() {
       {/* 7. Bottom Sticky Pay Button matching ref-5 */}
       <View style={styles.bottomBar}>
         <View style={styles.bottomPaySummary}>
-          <AppText variant="caption" style={{ color: '#64748B' }}>
+          <AppText variant="caption" style={{ color: colors.textSecondary }}>
             Amount to Pay
           </AppText>
-          <AppText variant="heading2" style={{ color: '#0F172A', fontWeight: '800' }}>
+          <AppText variant="heading2" style={{ color: colors.text, fontWeight: '800' }}>
             ₹{finalPayableAmount.toFixed(2)}
           </AppText>
         </View>
@@ -817,7 +673,7 @@ export default function PaymentScreen() {
           <Pressable style={styles.modalSheet} onPress={(e) => e.stopPropagation()}>
             <View style={styles.modalHandle} />
             <View style={styles.modalHeaderRow}>
-              <AppText variant="heading3" style={{ color: '#0F172A', fontWeight: '800' }}>
+              <AppText variant="heading3" style={{ color: colors.text, fontWeight: '800' }}>
                 Fare Breakup
               </AppText>
               <Pressable onPress={() => setFareBreakupVisible(false)} hitSlop={8}>
@@ -830,7 +686,7 @@ export default function PaymentScreen() {
                 <AppText variant="bodyMedium" style={{ color: '#475569' }}>
                   Base Fare ({selectedSeats.length} seat{selectedSeats.length > 1 ? 's' : ''})
                 </AppText>
-                <AppText variant="bodyMedium" style={{ color: '#0F172A', fontWeight: '600' }}>
+                <AppText variant="bodyMedium" style={{ color: colors.text, fontWeight: '600' }}>
                   ₹{baseTicketFare.toFixed(2)}
                 </AppText>
               </View>
@@ -839,16 +695,16 @@ export default function PaymentScreen() {
                 <AppText variant="bodyMedium" style={{ color: '#475569' }}>
                   Operator GST & Taxes
                 </AppText>
-                <AppText variant="bodyMedium" style={{ color: '#0F172A', fontWeight: '600' }}>
+                <AppText variant="bodyMedium" style={{ color: colors.text, fontWeight: '600' }}>
                   ₹{taxFare.toFixed(2)}
                 </AppText>
               </View>
 
               <View style={[styles.breakupRow, styles.breakupSubtotalRow]}>
-                <AppText variant="bodyMedium" style={{ color: '#0F172A', fontWeight: '700' }}>
+                <AppText variant="bodyMedium" style={{ color: colors.text, fontWeight: '700' }}>
                   Gross Fare
                 </AppText>
-                <AppText variant="bodyMedium" style={{ color: '#0F172A', fontWeight: '700' }}>
+                <AppText variant="bodyMedium" style={{ color: colors.text, fontWeight: '700' }}>
                   ₹{totalFare.toFixed(2)}
                 </AppText>
               </View>
@@ -867,24 +723,12 @@ export default function PaymentScreen() {
                 </View>
               )}
 
-              {useWallet && walletDeductionAmount > 0 && (
-                <View style={styles.breakupRow}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Ionicons name="wallet" size={14} color="#0D9488" style={{ marginRight: 6 }} />
-                    <AppText variant="bodyMedium" style={{ color: '#0D9488', fontWeight: '600' }}>
-                      AiBus Wallet Applied
-                    </AppText>
-                  </View>
-                  <AppText variant="bodyMedium" style={{ color: '#0D9488', fontWeight: '700' }}>
-                    -₹{walletDeductionAmount.toFixed(2)}
-                  </AppText>
-                </View>
-              )}
+
 
               <View style={styles.breakupDivider} />
 
               <View style={styles.breakupTotalRow}>
-                <AppText variant="bodyLargeBold" style={{ color: '#0F172A' }}>
+                <AppText variant="bodyLargeBold" style={{ color: colors.text }}>
                   Final Amount Payable
                 </AppText>
                 <AppText variant="heading2" style={{ color: '#D92D20', fontWeight: '800' }}>
@@ -920,18 +764,18 @@ export default function PaymentScreen() {
 
             {/* Headline matching ref-6 */}
             <AppText variant="heading2" style={styles.exitHeadline}>
-              Don't go back!
+              Keep your seat selection
             </AppText>
 
             <AppText variant="bodyLargeBold" style={styles.exitSubtitle}>
-              USE THIS COUPON TO GET UPTO 5% OFF
+              Review your checkout before leaving
             </AppText>
 
             <AppText variant="caption" style={styles.exitDescription}>
-              Apply code <AppText variant="caption" style={{ fontWeight: '800', color: '#D92D20' }}>AIBUS50</AppText> and complete your booking right now before seats are released.
+              Your seats are held until the timer ends.
             </AppText>
 
-            {/* Action 1: Apply coupon & book matching ref-6 */}
+            {recommendedCoupons.length > 0 && (
             <Pressable
               onPress={handleExitModalApplyAndBook}
               style={({ pressed }) => [
@@ -945,6 +789,7 @@ export default function PaymentScreen() {
                 Apply coupon & book
               </AppText>
             </Pressable>
+            )}
 
             {/* Action 2: Back to seat selection matching ref-6 */}
             <Pressable
@@ -956,7 +801,7 @@ export default function PaymentScreen() {
               accessibilityRole="button"
               accessibilityLabel="Back to seat selection"
             >
-              <AppText variant="bodyMedium" style={{ color: '#64748B', fontWeight: '600' }}>
+              <AppText variant="bodyMedium" style={{ color: colors.textSecondary, fontWeight: '600' }}>
                 Back to seat selection
               </AppText>
             </Pressable>
@@ -967,7 +812,7 @@ export default function PaymentScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   safeArea: {
     flex: 1,
   },
@@ -976,9 +821,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: colors.divider,
   },
   backButton: {
     width: 40,
@@ -1029,11 +874,11 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
   sectionCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: colors.border,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04,
@@ -1078,8 +923,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     fontSize: 14,
     fontWeight: '700',
-    color: '#0F172A',
-    backgroundColor: '#F8FAFC',
+    color: colors.text,
+    backgroundColor: colors.background,
   },
   applyButton: {
     height: 46,
@@ -1101,7 +946,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   quickChip: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: colors.divider,
     borderWidth: 1,
     borderColor: '#CBD5E1',
     borderRadius: 6,
@@ -1109,7 +954,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   quickChipText: {
-    color: '#334155',
+    color: colors.textSecondary,
     fontWeight: '700',
     fontSize: 11,
   },
@@ -1134,7 +979,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: colors.border,
     marginTop: 10,
   },
   methodRowSelected: {
@@ -1158,9 +1003,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderTopWidth: 1,
-    borderTopColor: '#E2E8F0',
+    borderTopColor: colors.border,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -3 },
     shadowOpacity: 0.08,
@@ -1184,7 +1029,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalSheet: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 20,
@@ -1215,11 +1060,11 @@ const styles = StyleSheet.create({
   breakupSubtotalRow: {
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
+    borderTopColor: colors.divider,
   },
   breakupDivider: {
     height: 1,
-    backgroundColor: '#E2E8F0',
+    backgroundColor: colors.border,
     marginVertical: 4,
   },
   breakupTotalRow: {
@@ -1236,7 +1081,7 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   exitModalContent: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 24,
     padding: 24,
     width: '100%',
@@ -1250,7 +1095,7 @@ const styles = StyleSheet.create({
   exitTimerBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FEF3C7',
+    backgroundColor: colors.warningSoft,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
@@ -1265,13 +1110,13 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: '#FEE2E2',
+    backgroundColor: colors.dangerSoft,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 14,
   },
   exitHeadline: {
-    color: '#0F172A',
+    color: colors.text,
     fontWeight: '800',
     textAlign: 'center',
   },
@@ -1283,7 +1128,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   exitDescription: {
-    color: '#64748B',
+    color: colors.textSecondary,
     textAlign: 'center',
     marginTop: 8,
     lineHeight: 18,

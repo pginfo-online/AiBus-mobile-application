@@ -75,6 +75,7 @@ export const SecureTokenStorage = {
 const PENDING_PAYMENT_KEY = 'aibus_pending_payment';
 
 export interface PendingPaymentRecord {
+  userId?: string;
   bookingId: string;
   merchantTxnId: string;
   amount: number;

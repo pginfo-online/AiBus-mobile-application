@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import { Platform } from 'react-native';
 
 export interface PhoneNumberHintResult {
@@ -13,19 +13,6 @@ export interface PhoneNumberHintResult {
  * Safely handles unsupported platforms (iOS, web, non-GMS Android).
  */
 export function useGooglePhoneNumberHint() {
-  const [isSupported, setIsSupported] = useState(false);
-
-  useEffect(() => {
-    try {
-      if (Platform.OS === 'android') {
-        const { isPhoneNumberHintAvailable } = require('react-native-nitro-google-number-hint');
-        setIsSupported(Boolean(isPhoneNumberHintAvailable && isPhoneNumberHintAvailable()));
-      }
-    } catch {
-      setIsSupported(false);
-    }
-  }, []);
-
   const requestHint = useCallback(async (): Promise<PhoneNumberHintResult | null> => {
     if (Platform.OS !== 'android') {
       return null;
@@ -68,7 +55,6 @@ export function useGooglePhoneNumberHint() {
   }, []);
 
   return {
-    isSupported,
     requestHint,
   };
 }

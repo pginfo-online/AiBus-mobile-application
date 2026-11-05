@@ -11,7 +11,10 @@ export function useAutomaticOtpRetriever(
   const [appHash, setAppHash] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
   const callbackRef = useRef(onOtpDetected);
-  callbackRef.current = onOtpDetected;
+  useEffect(() => {
+    callbackRef.current = onOtpDetected;
+  }, [onOtpDetected]);
+  const enabled = Boolean(onOtpDetected);
 
   // Retrieve app hash for Android SMS Retriever API
   useEffect(() => {
@@ -76,11 +79,13 @@ export function useAutomaticOtpRetriever(
   }, []);
 
   useEffect(() => {
-    startListening();
+    if (!enabled) return;
+    const timer = setTimeout(startListening, 0);
     return () => {
+      clearTimeout(timer);
       stopListening();
     };
-  }, [startListening, stopListening]);
+  }, [enabled, startListening, stopListening]);
 
   return {
     appHash,

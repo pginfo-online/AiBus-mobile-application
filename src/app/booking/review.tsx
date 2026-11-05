@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   ScrollView,
@@ -20,14 +20,6 @@ import {
 import { useTranslation } from '../../core/localization';
 import { useBookingStore } from '../../stores/bookingStore';
 import { useAuthStore } from '../../stores/authStore';
-import {
-  useHoldSeatsMutation,
-  useCreateCheckoutSessionMutation,
-} from '../../features/booking/useBookingMutations';
-import { PaymentIntentResponse } from '../../features/payments/usePaymentMutations';
-import { RazorpayService } from '../../features/payments/RazorpayService';
-import { PaymentCoordinator } from '../../features/payments/PaymentCoordinator';
-import { PendingPaymentStorage } from '../../core/storage';
 import { DomainError } from '../../core/errors';
 
 export default function ReviewBookingScreen() {
@@ -52,24 +44,12 @@ export default function ReviewBookingScreen() {
     gstin,
     gstCompany,
     activeHold,
-    activeBookingId,
     setActiveHold,
     setActiveBooking,
   } = useBookingStore();
 
-  const holdMutation = useHoldSeatsMutation();
-  const checkoutSessionMutation = useCreateCheckoutSessionMutation();
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [secondsRemaining, setSecondsRemaining] = useState<number>(600);
-
-  // Pre-loaded checkout session references for instantaneous gateway launch (< 50ms)
-  const preloadedSessionRef = useRef<{
-    bookingId: string;
-    bookingNumber: string;
-    paymentIntent: PaymentIntentResponse;
-  } | null>(null);
-  const preloadingPromiseRef = useRef<Promise<any> | null>(null);
 
   // Compute fares
   const totalFare = useMemo(() => selectedSeats.reduce((sum, s) => sum + s.fare, 0), [selectedSeats]);
@@ -80,160 +60,20 @@ export default function ReviewBookingScreen() {
   useEffect(() => {
     if (!activeHold?.expiresAt) return;
 
-    const interval = setInterval(() => {
-      const remainingMs = new Date(activeHold.expiresAt).getTime() - Date.now();
-      const remainingSecs = Math.max(0, Math.floor(remainingMs / 1000));
-      setSecondsRemaining(remainingSecs);
-
-      if (remainingSecs <= 0) {
-        clearInterval(interval);
-        Alert.alert(
-          'Seat Hold Expired',
-          'Your 10-minute seat hold time has expired. Please reselect your seats to ensure availability.',
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                setActiveHold(null);
-                setActiveBooking(null, null);
-                router.navigate('/booking/seat-map' as any);
-              },
-            },
-          ]
-        );
-      }
-    }, 1000);
-
+    const update = () => setSecondsRemaining(Math.max(
+      0, Math.floor((new Date(activeHold.expiresAt).getTime() - Date.now()) / 1000)
+    ));
+    update();
+    const interval = setInterval(update, 1000);
     return () => clearInterval(interval);
-  }, [activeHold?.expiresAt, router, setActiveBooking, setActiveHold]);
+  }, [activeHold?.expiresAt]);
 
   const formattedTimer = `${Math.floor(secondsRemaining / 60)}:${String(
     secondsRemaining % 60
   ).padStart(2, '0')}`;
   const isExpiringSoon = secondsRemaining > 0 && secondsRemaining < 90;
 
-  // 2. Pre-fetch / Pre-create Seat Hold & Checkout Session in Background (Industry Standard Optimization)
-  useEffect(() => {
-    if (!selectedBoardingPoint || !selectedDroppingPoint || passengers.length === 0 || !selectedBus) {
-      return;
-    }
-
-    let isMounted = true;
-
-    const prepareCheckoutSession = async () => {
-      try {
-        // Step A: Acquire or verify valid seat hold
-        let holdId = activeHold?.id;
-        let effectiveTotalFare = activeHold?.totalFare || totalFare;
-
-        const isHoldValid =
-          activeHold &&
-          activeHold.id &&
-          new Date(activeHold.expiresAt).getTime() > Date.now() + 30000;
-
-        if (!isHoldValid) {
-          const holdRes = await holdMutation.mutateAsync({
-            fromCityId: fromCity.providerCityId,
-            toCityId: toCity.providerCityId,
-            journeyDate,
-            busId: selectedBus.RouteBusId || selectedBus.BusId,
-            pickupId: selectedBoardingPoint.code,
-            dropoffId: selectedDroppingPoint.code,
-            contactInfo: {
-              customerName: contactName || passengers[0]?.name || 'Passenger',
-              email: contactEmail || 'booking@aibus.in',
-              phone: contactPhone || '9876543210',
-              mobile: contactPhone || '9876543210',
-            },
-            gstDetails: gstin ? { gstin, gstCompany: gstCompany || '' } : undefined,
-            passengers: passengers.map((p) => ({
-              seatNo: p.seatNo,
-              seatTypeId: p.seatTypeId,
-              fare: p.fare,
-              gender: p.gender,
-              age: p.age,
-              name: p.name,
-              isAcSeat: p.isAcSeat,
-            })),
-          });
-
-          if (!isMounted) return;
-
-          holdId = holdRes.id;
-          effectiveTotalFare = holdRes.totalFare || totalFare;
-
-          setActiveHold({
-            id: holdRes.id,
-            providerHoldId: holdRes.providerHoldId,
-            expiresAt: holdRes.expiresAt,
-            ttlSeconds: holdRes.ttlSeconds || 600,
-            totalFare: holdRes.totalFare || totalFare,
-          });
-        }
-
-        // Step B: Call consolidated checkout session endpoint
-        const sessionRes = await checkoutSessionMutation.mutateAsync({
-          holdId: holdId || undefined,
-          fromCityId: fromCity.providerCityId,
-          toCityId: toCity.providerCityId,
-          fromCityName: fromCity.name,
-          toCityName: toCity.name,
-          journeyDate,
-          busId: selectedBus.RouteBusId || selectedBus.BusId,
-          tripId: selectedBus.TripId || 'TRIP-DEFAULT',
-          pickupCode: selectedBoardingPoint.code,
-          pickupLocation: selectedBoardingPoint.name,
-          pickupTime: selectedBoardingPoint.time,
-          dropoffCode: selectedDroppingPoint.code,
-          dropoffLocation: selectedDroppingPoint.name,
-          dropoffTime: selectedDroppingPoint.time,
-          operatorName: selectedBus.CompanyName,
-          busType: selectedBus.BusTypeName,
-          totalFare: effectiveTotalFare,
-          baseFare,
-          serviceTax: taxes,
-          contactName: contactName || passengers[0]?.name || 'Passenger',
-          contactEmail: contactEmail || 'booking@aibus.in',
-          contactPhone: contactPhone || '9876543210',
-          passengers,
-          cancellationPolicy: selectedBus.CancellationPolicy,
-          gateway: 'RAZORPAY',
-          paymentMode: 'UPI',
-        });
-
-        if (!isMounted) return;
-
-        preloadedSessionRef.current = {
-          bookingId: sessionRes.booking.id,
-          bookingNumber: sessionRes.booking.bookingNumber,
-          paymentIntent: sessionRes.paymentIntent,
-        };
-
-        setActiveBooking(sessionRes.booking.id, sessionRes.booking.bookingNumber);
-
-        // Pre-store pending payment metadata for resilience
-        await PendingPaymentStorage.set({
-          bookingId: sessionRes.booking.id,
-          merchantTxnId: sessionRes.paymentIntent.merchantTxnId,
-          gatewayOrderId: sessionRes.paymentIntent.gatewayOrderId,
-          amount: sessionRes.paymentIntent.amount,
-          timestamp: Date.now(),
-          gateway: 'RAZORPAY',
-        });
-      } catch (err) {
-        // Safe fallback — on-demand initiation will run if pre-fetch fails
-        console.warn('Background checkout session preparation fallback:', err);
-      }
-    };
-
-    preloadingPromiseRef.current = prepareCheckoutSession();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  const handleConfirmAndPay = async () => {
+  const handleConfirmAndPay = () => {
     // 1. Enforce Authentication Before Payment
     if (!isAuthenticated) {
       Alert.alert(
@@ -255,89 +95,14 @@ export default function ReviewBookingScreen() {
       return;
     }
 
-    if (secondsRemaining <= 10 && activeHold?.expiresAt) {
+    if (!activeHold || new Date(activeHold.expiresAt).getTime() <= Date.now()) {
       Alert.alert('Hold Expired', 'Seat hold has expired. Please select your seats again.');
       router.navigate('/booking/seat-map' as any);
       return;
     }
 
-    setIsSubmitting(true);
-
-    try {
-      try {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      } catch {
-        // Safe fallback
-      }
-
-      let holdId = activeHold?.id;
-      let effectiveTotalFare = activeHold?.totalFare || totalFare;
-
-      // Ensure active hold is created with provider
-      if (!holdId || (activeHold && new Date(activeHold.expiresAt).getTime() <= Date.now() + 30000)) {
-        const holdRes = await holdMutation.mutateAsync({
-          fromCityId: fromCity.providerCityId,
-          toCityId: toCity.providerCityId,
-          journeyDate,
-          busId: selectedBus.RouteBusId || selectedBus.BusId,
-          pickupId: selectedBoardingPoint.code,
-          dropoffId: selectedDroppingPoint.code,
-          contactInfo: {
-            customerName: contactName || passengers[0]?.name || 'Passenger',
-            email: contactEmail || 'booking@aibus.in',
-            phone: contactPhone || '9876543210',
-            mobile: contactPhone || '9876543210',
-          },
-          gstDetails: gstin ? { gstin, gstCompany: gstCompany || '' } : undefined,
-          passengers: passengers.map((p) => ({
-            seatNo: p.seatNo,
-            seatTypeId: p.seatTypeId,
-            fare: p.fare,
-            gender: p.gender,
-            age: p.age,
-            name: p.name,
-            isAcSeat: p.isAcSeat,
-          })),
-        });
-
-        holdId = holdRes.id;
-        effectiveTotalFare = holdRes.totalFare || totalFare;
-
-        setActiveHold({
-          id: holdRes.id,
-          providerHoldId: holdRes.providerHoldId,
-          expiresAt: holdRes.expiresAt,
-          ttlSeconds: holdRes.ttlSeconds || 600,
-          totalFare: holdRes.totalFare || totalFare,
-        });
-      }
-
-      // Navigate cleanly to Payment screen with active hold
-      router.push('/booking/payment' as any);
-    } catch (err: any) {
-      const errorMsg =
-        err instanceof DomainError
-          ? err.message
-          : err?.response?.data?.error?.message || err?.message || 'Failed to hold seats. Please try again.';
-
-      Alert.alert('Unable to Proceed', errorMsg, [
-        {
-          text: 'Retry',
-          onPress: () => handleConfirmAndPay(),
-        },
-        {
-          text: 'Choose Other Seats',
-          onPress: () => {
-            setActiveHold(null);
-            setActiveBooking(null, null);
-            router.navigate('/booking/seat-map' as any);
-          },
-          style: 'cancel',
-        },
-      ]);
-    } finally {
-      setIsSubmitting(false);
-    }
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    router.push('/booking/payment');
   };
 
   return (
@@ -530,16 +295,11 @@ export default function ReviewBookingScreen() {
         ]}
       >
         <AppButton
-          title={
-            isSubmitting
-              ? 'Securing seats...'
-              : `Proceed to Payment (₹${totalFare.toFixed(2)})`
-          }
+          title={t('review.proceed_pay', { amount: totalFare.toFixed(2) })}
           onPress={handleConfirmAndPay}
           variant="primary"
           size="lg"
           fullWidth
-          loading={isSubmitting}
           icon={<Ionicons name="arrow-forward" size={18} color="#FFFFFF" />}
         />
       </View>

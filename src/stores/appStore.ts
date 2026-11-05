@@ -1,6 +1,9 @@
+import { Platform } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
+import { createJSONStorage, persist } from 'zustand/middleware';
 import { create } from 'zustand';
-import { ColorThemeMode } from '../design-system/theme';
-import { SupportedLanguage } from '../core/localization';
+import type { ColorThemeMode } from '../design-system/theme';
+import type { SupportedLanguage } from '../core/localization';
 
 export interface RouteSearchItem {
   fromCityId: number;
@@ -18,15 +21,10 @@ interface AppState {
   addRecentSearch: (route: RouteSearchItem) => void;
 }
 
-export const useAppStore = create<AppState>((set, get) => ({
+export const useAppStore = create<AppState>()(persist((set, get) => ({
   themeMode: 'system',
   language: 'en',
-  recentSearches: [
-    { fromCityId: 101, fromCityName: 'Mumbai', toCityId: 102, toCityName: 'Pune' },
-    { fromCityId: 201, fromCityName: 'Bangalore', toCityId: 202, toCityName: 'Chennai' },
-    { fromCityId: 301, fromCityName: 'Delhi', toCityId: 302, toCityName: 'Jaipur' },
-  ],
-
+  recentSearches: [],
   setThemeMode: (mode) => set({ themeMode: mode }),
   setLanguage: (lang) => set({ language: lang }),
 
@@ -37,4 +35,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
     set({ recentSearches: [route, ...filtered].slice(0, 5) });
   },
+ }), {
+  name: 'aibus_preferences',
+  storage: createJSONStorage(() => ({
+    getItem: (key) => Platform.OS === 'web' ? localStorage.getItem(key) : SecureStore.getItemAsync(key),
+    setItem: (key, value) => Platform.OS === 'web' ? localStorage.setItem(key, value) : SecureStore.setItemAsync(key, value),
+    removeItem: (key) => Platform.OS === 'web' ? localStorage.removeItem(key) : SecureStore.deleteItemAsync(key),
+  })),
+  partialize: ({ themeMode, language }) => ({ themeMode, language }),
 }));

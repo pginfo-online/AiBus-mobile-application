@@ -28,6 +28,12 @@ import { useAuthStore } from '../../stores/authStore';
 import { useBusesQuery } from '../../features/buses/useBusesQuery';
 import { BusSearchResultItem } from '../../types/api';
 
+function durationMinutes(departure: string, arrival: string) {
+  const [departureHour, departureMinute] = departure.split(':').map(Number);
+  const [arrivalHour, arrivalMinute] = arrival.split(':').map(Number);
+  return ((arrivalHour - departureHour) * 60 + arrivalMinute - departureMinute + 1440) % 1440;
+}
+
 export default function BusesScreen() {
   const router = useRouter();
   const { colors, spacing, radii, shadows } = useAppTheme();
@@ -48,12 +54,6 @@ export default function BusesScreen() {
   // Comprehensive filter state
   const [filters, setFilters] = useState<ComprehensiveFilterState>(DEFAULT_FILTER_STATE);
 
-  // Quick filter chips toggles
-  const [quickToilet, setQuickToilet] = useState(false);
-  const [quickPrimo, setQuickPrimo] = useState(false);
-  const [quickEarlyBuy, setQuickEarlyBuy] = useState(false);
-
-  // Query backend for raw results
   const {
     data,
     isLoading,
@@ -88,10 +88,6 @@ export default function BusesScreen() {
     let list = [...rawBuses];
 
     // Quick chips
-    if (quickPrimo) {
-      list = list.filter((b) => b.CompanyName.toLowerCase().includes('primo') || b.RouteBusId === 6903);
-    }
-
     // Modal filters: Bus type
     if (filters.busTypes.length > 0) {
       list = list.filter((b) => {
@@ -150,12 +146,12 @@ export default function BusesScreen() {
         list.sort((a, b) => b.DepartureTime.localeCompare(a.DepartureTime));
         break;
       case 'duration_asc':
-        list.sort((a, b) => a.DepartureTime.localeCompare(b.DepartureTime));
+        list.sort((a, b) => durationMinutes(a.DepartureTime, a.ArrivalTime) - durationMinutes(b.DepartureTime, b.ArrivalTime));
         break;
     }
 
     return list;
-  }, [rawBuses, quickPrimo, filters]);
+  }, [rawBuses, filters]);
 
   const activeFiltersCount = useMemo(() => {
     let count = 0;
@@ -164,7 +160,6 @@ export default function BusesScreen() {
     if (filters.operators.length > 0) count += filters.operators.length;
     if (filters.boardingPoints.length > 0) count += filters.boardingPoints.length;
     if (filters.droppingPoints.length > 0) count += filters.droppingPoints.length;
-    if (filters.amenities.length > 0) count += filters.amenities.length;
     if (filters.sortBy !== 'departure_asc') count += 1;
     return count;
   }, [filters]);
@@ -194,17 +189,11 @@ export default function BusesScreen() {
     }
   };
 
-  const walletAmount = user?.walletBalance ? Number(user.walletBalance).toFixed(0) : '72';
+  const walletAmount = user?.walletBalance ? Number(user.walletBalance).toFixed(0) : '0';
 
   const renderBusItem = useCallback(
     ({ item }: { item: BusSearchResultItem }) => {
       const duration = calculateDuration(item.DepartureTime, item.ArrivalTime);
-      const singleSeats = Math.max(Math.floor(item.AvailableSeats * 0.3), 1);
-      const rating = item.RouteBusId === 6903 ? '4.6' : item.RouteBusId === 6904 ? '4.4' : '4.3';
-      const reviewCount = item.RouteBusId === 6903 ? '527' : item.RouteBusId === 6904 ? '844' : '1345';
-      const comfortScore = item.RouteBusId === 6903 ? '9.2' : item.RouteBusId === 6904 ? '8.0' : '8.6';
-      const isPrimo = item.RouteBusId === 6903 || item.CompanyName.toLowerCase().includes('primo');
-
       return (
         <AppCard
           variant="elevated"
@@ -213,19 +202,6 @@ export default function BusesScreen() {
           style={[styles.busCard, shadows.sm]}
         >
           <View style={styles.cardInnerPadding}>
-            {/* Top row badge if Primo matching ref-4 */}
-            {isPrimo && (
-              <View style={styles.primoTopBadgeRow}>
-                <View style={styles.primoLabelWrap}>
-                  <AppText variant="caption" style={styles.primoText}>
-                    <AppText variant="caption" style={{ fontWeight: '800', color: '#1E3A8A' }}>Primo </AppText>
-                    <Ionicons name="star" size={12} color="#D97706" />
-                    <AppText variant="caption" style={{ color: '#1E3A8A' }}> On Time Guarantee</AppText>
-                  </AppText>
-                </View>
-              </View>
-            )}
-
             {/* Time & Price Row matching ref-4 */}
             <View style={styles.timePriceRow}>
               <View style={styles.timeCol}>
@@ -241,7 +217,7 @@ export default function BusesScreen() {
                   </AppText>
                 </View>
                 <AppText variant="caption" style={styles.durationSubtext}>
-                  {duration} · {item.AvailableSeats} Seats ({singleSeats} Single)
+                  {duration} · {item.AvailableSeats} seats
                 </AppText>
               </View>
 
@@ -266,39 +242,6 @@ export default function BusesScreen() {
                 </AppText>
               </View>
 
-              {/* Green Rating Badge */}
-              <View style={{ alignItems: 'flex-end' }}>
-                <View style={styles.ratingBadge}>
-                  <Ionicons name="star" size={11} color="#FFFFFF" style={{ marginRight: 3 }} />
-                  <AppText variant="caption" style={styles.ratingBadgeText}>
-                    {rating}
-                  </AppText>
-                </View>
-                <AppText variant="caption" style={styles.reviewCountText}>
-                  {reviewCount}
-                </AppText>
-              </View>
-            </View>
-
-            {/* Bottom Badges Row: Comfort score, New Bus, Toilet matching ref-4 */}
-            <View style={styles.badgesRow}>
-              <View style={[styles.pillBadge, { backgroundColor: '#EFF6FF' }]}>
-                <AppText variant="caption" style={[styles.pillBadgeText, { color: '#1D4ED8' }]}>
-                  Comfort score: {comfortScore}/10
-                </AppText>
-              </View>
-
-              <View style={[styles.pillBadge, { backgroundColor: '#F1F5F9', marginLeft: 8 }]}>
-                <AppText variant="caption" style={[styles.pillBadgeText, { color: '#334155' }]}>
-                  New Bus
-                </AppText>
-              </View>
-
-              <View style={[styles.pillBadge, { backgroundColor: '#F1F5F9', marginLeft: 8 }]}>
-                <AppText variant="caption" style={[styles.pillBadgeText, { color: '#334155' }]}>
-                  Toilet
-                </AppText>
-              </View>
             </View>
           </View>
         </AppCard>
@@ -369,65 +312,6 @@ export default function BusesScreen() {
             </AppText>
           </Pressable>
 
-          {/* Quick Toilet Chip */}
-          <Pressable
-            onPress={() => setQuickToilet((p) => !p)}
-            style={[
-              styles.filterPill,
-              quickToilet && styles.filterPillActive,
-              { marginLeft: 8 },
-            ]}
-          >
-            <AppText
-              variant="bodySmallMedium"
-              style={[
-                styles.filterPillText,
-                quickToilet ? { color: '#D92D20', fontWeight: '700' } : null,
-              ]}
-            >
-              Toilet
-            </AppText>
-          </Pressable>
-
-          {/* Quick Primo Bus Chip */}
-          <Pressable
-            onPress={() => setQuickPrimo((p) => !p)}
-            style={[
-              styles.filterPill,
-              quickPrimo && styles.filterPillActive,
-              { marginLeft: 8 },
-            ]}
-          >
-            <Ionicons name="star" size={14} color={quickPrimo ? '#D92D20' : '#D97706'} style={{ marginRight: 4 }} />
-            <AppText
-              variant="bodySmallMedium"
-              style={[
-                styles.filterPillText,
-                quickPrimo ? { color: '#D92D20', fontWeight: '700' } : null,
-              ]}
-            >
-              Primo Bus
-            </AppText>
-          </Pressable>
-
-          {/* Quick Early Buy Chip */}
-          <Pressable
-            onPress={() => setQuickEarlyBuy((p) => !p)}
-            style={[
-              styles.filterPill,
-              quickEarlyBuy && styles.filterPillActive,
-              { marginLeft: 8 },
-            ]}
-          >
-            <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginRight: 6 }}>
-              <AppText variant="caption" style={{ color: '#D97706', fontWeight: '700', fontSize: 10 }}>
-                Early Buy
-              </AppText>
-            </View>
-            <AppText variant="bodySmallMedium" style={styles.filterPillText}>
-              Upto 10%
-            </AppText>
-          </Pressable>
         </ScrollView>
       </View>
 
@@ -487,9 +371,6 @@ export default function BusesScreen() {
               actionTitle="Reset Filters"
               onAction={() => {
                 setFilters(DEFAULT_FILTER_STATE);
-                setQuickToilet(false);
-                setQuickPrimo(false);
-                setQuickEarlyBuy(false);
               }}
             />
           )}

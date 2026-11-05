@@ -73,7 +73,6 @@ const CATEGORIES: FilterCategory[] = [
   { key: 'boarding', label: 'Boarding Points' },
   { key: 'dropping', label: 'Dropping Points' },
   { key: 'operator', label: 'Bus Operator' },
-  { key: 'amenities', label: 'Amenities' },
   { key: 'features', label: 'Bus Features' },
 ];
 
@@ -89,12 +88,11 @@ export function BusFiltersModal({
   const [activeCategory, setActiveCategory] = useState<FilterCategoryKey>('busType');
   const [draftFilters, setDraftFilters] = useState<ComprehensiveFilterState>(currentFilters);
 
-  // Sync draft filters when modal opens
-  React.useEffect(() => {
-    if (visible) {
-      setDraftFilters(currentFilters);
-    }
-  }, [visible, currentFilters]);
+  const [wasVisible, setWasVisible] = useState(visible);
+  if (wasVisible !== visible) {
+    setWasVisible(visible);
+    if (visible) setDraftFilters(currentFilters);
+  }
 
   // Aggregate stats from the buses array
   const stats = useMemo(() => {

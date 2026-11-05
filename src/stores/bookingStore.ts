@@ -24,6 +24,7 @@ export interface SelectedSeatItem {
   fare: number;
   baseFare: number;
   tax: number;
+  requiredGender?: 'M' | 'F';
 }
 
 export interface PassengerItem {
@@ -95,19 +96,6 @@ interface BookingFlowState {
   resetBookingFlow: () => void;
 }
 
-// Default popular Indian routes: Mumbai to Pune
-const DEFAULT_FROM_CITY: CitySelection = {
-  id: 'c-mum',
-  providerCityId: 101,
-  name: 'Mumbai',
-};
-
-const DEFAULT_TO_CITY: CitySelection = {
-  id: 'c-pun',
-  providerCityId: 102,
-  name: 'Pune',
-};
-
 const getTodayString = (): string => {
   const d = new Date();
   const year = d.getFullYear();
@@ -117,8 +105,8 @@ const getTodayString = (): string => {
 };
 
 export const useBookingStore = create<BookingFlowState>((set, get) => ({
-  fromCity: DEFAULT_FROM_CITY,
-  toCity: DEFAULT_TO_CITY,
+  fromCity: { id: '', providerCityId: 0, name: '' },
+  toCity: { id: '', providerCityId: 0, name: '' },
   journeyDate: getTodayString(),
   isWomenBooking: false,
 

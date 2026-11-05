@@ -1,3 +1,6 @@
+import { useFocusEffect } from 'expo-router';
+import { PendingPaymentStorage, type PendingPaymentRecord } from '../../core/storage';
+import { AppErrorState, AppButton } from '../../design-system';
 import React, { useState, useMemo, useCallback, useRef } from 'react';
 import {
   View,
@@ -28,7 +31,17 @@ export default function BookingsScreen() {
   const { t } = useTranslation();
 
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const { data: bookings, isLoading, refetch, isRefetching } = useUserBookingsQuery(isAuthenticated);
+  const userId = useAuthStore((state) => state.user?.id);
+  const [pendingPayment, setPendingPayment] = useState<PendingPaymentRecord | null>(null);
+  useFocusEffect(useCallback(() => {
+    let focused = true;
+    void PendingPaymentStorage.get().then((pending) => {
+      if (focused) setPendingPayment(userId && pending?.userId === userId ? pending : null);
+    });
+    return () => { focused = false; };
+  }, [userId]));
+
+  const { data: bookings, isLoading, isError, refetch, isRefetching } = useUserBookingsQuery(isAuthenticated);
 
   const [activeTab, setActiveTab] = useState<BookingTabFilter>('UPCOMING');
   const isRefreshingRef = useRef<boolean>(false);
@@ -39,7 +52,7 @@ export default function BookingsScreen() {
       return { upcomingBookings: [], pastBookings: [], cancelledBookings: [] };
     }
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     const upcoming: BookingResponseData[] = [];
     const past: BookingResponseData[] = [];
     const cancelled: BookingResponseData[] = [];
@@ -48,8 +61,8 @@ export default function BookingsScreen() {
       if (b.status === 'CANCELLED') {
         cancelled.push(b);
       } else if (
-        (b.status === 'CONFIRMED' || b.status === 'HELD' || b.status === 'PAYMENT_PENDING') &&
-        b.journeyDate >= today
+        ['CONFIRMED', 'HELD', 'PAYMENT_PENDING', 'PAYMENT_SUCCESS', 'BOOKING_REQUESTED', 'BOOKING_UNKNOWN', 'CANCELLATION_REQUESTED'].includes(b.status) &&
+        b.journeyDate.slice(0, 10) >= today
       ) {
         upcoming.push(b);
       } else {
@@ -139,7 +152,7 @@ export default function BookingsScreen() {
           <View style={[styles.statusBadge, { backgroundColor: '#DCFCE7' }]}>
             <View style={[styles.pulseDot, { backgroundColor: '#16A34A' }]} />
             <AppText variant="caption" style={{ color: '#15803D', fontWeight: '800' }}>
-              CONFIRMED
+              {item.status.replaceAll('_', ' ')}
             </AppText>
           </View>
           <AppText variant="caption" style={{ color: colors.textSecondary }}>
@@ -335,7 +348,7 @@ export default function BookingsScreen() {
                     activeTab === 'UPCOMING' ? styles.activeCapsuleTabText : styles.inactiveCapsuleTabText,
                   ]}
                 >
-                  Upcoming
+                  {t('bookings.upcoming')}
                 </AppText>
               </Pressable>
 
@@ -353,7 +366,7 @@ export default function BookingsScreen() {
                     activeTab === 'PAST_TRIPS' ? styles.activeCapsuleTabText : styles.inactiveCapsuleTabText,
                   ]}
                 >
-                  Past Trips
+                  {t('bookings.completed')}
                 </AppText>
               </Pressable>
 
@@ -371,7 +384,7 @@ export default function BookingsScreen() {
                     activeTab === 'CANCELLED' ? styles.activeCapsuleTabText : styles.inactiveCapsuleTabText,
                   ]}
                 >
-                  Cancelled
+                  {t('bookings.cancelled')}
                 </AppText>
               </Pressable>
             </View>
@@ -390,7 +403,20 @@ export default function BookingsScreen() {
               />
             }
           >
-            {isLoading && !bookings ? (
+            {pendingPayment && pendingPayment.userId === userId &&
+              !bookings?.some((booking) => booking.id === pendingPayment.bookingId &&
+                ['CONFIRMED', 'CANCELLED', 'BOOKING_FAILED'].includes(booking.status)) && (
+              <AppButton title="Check recent payment" onPress={() => router.push({
+                pathname: '/booking/processing',
+                params: {
+                  bookingId: pendingPayment.bookingId,
+                  merchantTxnId: pendingPayment.merchantTxnId,
+                },
+              })} />
+            )}
+            {isError && !bookings ? (
+              <AppErrorState error="Could not load your bookings." onRetry={handleRefresh} />
+            ) : isLoading && !bookings ? (
               /* Production Skeleton Loader strictly matching ref-1.png */
               <BookingCardSkeleton count={2} />
             ) : (

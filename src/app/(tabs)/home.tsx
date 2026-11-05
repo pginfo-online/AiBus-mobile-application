@@ -118,7 +118,7 @@ export default function HomeScreen() {
   }, [journeyDate]);
 
   const handleSearchBuses = () => {
-    if (!fromCity || !toCity) {
+    if (!fromCity.providerCityId || !toCity.providerCityId) {
       Alert.alert('Incomplete Search', 'Please select both origin and destination cities.');
       return;
     }
@@ -242,17 +242,17 @@ export default function HomeScreen() {
               onPress={() => router.push('/search/from-city' as any)}
               style={styles.fieldRow}
               accessibilityRole="button"
-              accessibilityLabel={`Select Origin, currently ${fromCity.name}`}
+              accessibilityLabel={`Select Origin, currently ${fromCity.name || t('home.select_city')}`}
             >
               <View style={styles.rowIconBox}>
                 <Ionicons name="bus-outline" size={22} color="#1E293B" />
               </View>
               <View style={styles.fieldTextWrapper}>
                 <AppText variant="caption" style={{ color: '#64748B' }}>
-                  From
+                  {t('home.from')}
                 </AppText>
                 <AppText variant="heading3" style={{ color: '#0F172A', marginTop: 2 }}>
-                  {fromCity.name}
+                  {fromCity.name || t('home.select_city')}
                 </AppText>
               </View>
             </Pressable>
@@ -277,17 +277,17 @@ export default function HomeScreen() {
               onPress={() => router.push('/search/to-city' as any)}
               style={styles.fieldRow}
               accessibilityRole="button"
-              accessibilityLabel={`Select Destination, currently ${toCity.name}`}
+              accessibilityLabel={`Select Destination, currently ${toCity.name || t('home.select_city')}`}
             >
               <View style={styles.rowIconBox}>
                 <Ionicons name="bus-outline" size={22} color="#1E293B" />
               </View>
               <View style={styles.fieldTextWrapper}>
                 <AppText variant="caption" style={{ color: '#64748B' }}>
-                  To
+                  {t('home.to')}
                 </AppText>
                 <AppText variant="heading3" style={{ color: '#0F172A', marginTop: 2 }}>
-                  {toCity.name}
+                  {toCity.name || t('home.select_city')}
                 </AppText>
               </View>
             </Pressable>

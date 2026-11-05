@@ -1,3 +1,4 @@
+import { useTranslation } from '../../core/localization';
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -22,6 +23,8 @@ import { useBookingStore, CitySelection } from '../../stores/bookingStore';
 
 export default function ToCityScreen() {
   const router = useRouter();
+  const { t } = useTranslation();
+  const oppositeId = useBookingStore((state) => state.fromCity.providerCityId);
   const { colors, spacing, radii } = useAppTheme();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -101,7 +104,7 @@ export default function ToCityScreen() {
             autoFocus
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder="Search area"
+            placeholder={t('city.search_placeholder')}
             placeholderTextColor={colors.textMuted}
             style={[styles.textInput, { color: colors.text }]}
             returnKeyType="search"
@@ -119,12 +122,12 @@ export default function ToCityScreen() {
       {/* 2. Section Header: Popular cities / Search results */}
       <View style={styles.sectionHeaderBox}>
         <AppText variant="heading3" style={[styles.sectionTitle, { color: colors.text }]}>
-          {debouncedQuery.trim().length > 0 ? 'Search results' : 'Popular cities'}
+          {debouncedQuery.trim().length > 0 ? t('city.results') : t('city.popular')}
         </AppText>
       </View>
 
       {/* 3. List Content */}
-      {isLoading && !cities ? (
+      {(isLoading || searchQuery.trim() !== debouncedQuery.trim()) ? (
         <View style={{ paddingHorizontal: 16 }}>
           {[1, 2, 3, 4, 5, 6].map((k) => (
             <View key={k} style={styles.skeletonRow}>
@@ -142,7 +145,7 @@ export default function ToCityScreen() {
         />
       ) : (
         <FlatList
-          data={cities || []}
+          data={cities?.filter((city) => city.providerCityId !== oppositeId) || []}
           keyExtractor={(item) => String(item.providerCityId || item.id)}
           renderItem={renderCityItem}
           keyboardShouldPersistTaps="handled"
@@ -151,8 +154,8 @@ export default function ToCityScreen() {
           ListEmptyComponent={() => (
             <AppEmptyState
               icon={<Ionicons name="location-outline" size={40} color={colors.textMuted} />}
-              title="No cities found"
-              description="Check the spelling or try searching for another city."
+              title={t('city.no_results')}
+              description={t('city.try_again')}
             />
           )}
         />

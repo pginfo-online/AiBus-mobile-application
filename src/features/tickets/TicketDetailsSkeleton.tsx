@@ -1,8 +1,8 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, Animated } from 'react-native';
 
 export function TicketDetailsSkeleton() {
-  const animatedOpacity = useRef(new Animated.Value(0.45)).current;
+  const [animatedOpacity] = useState(() => new Animated.Value(0.45));
 
   useEffect(() => {
     const pulse = Animated.loop(

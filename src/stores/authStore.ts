@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { SecureTokenStorage } from '../core/storage';
+import { queryClient } from '../core/api/queryClient';
+import { useBookingStore } from './bookingStore';
 import { apiClient } from '../core/api/client';
 
 export interface UserProfile {
@@ -54,6 +56,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // Ignore network errors on logout
     } finally {
       await SecureTokenStorage.clearTokens();
+      queryClient.clear();
+      useBookingStore.getState().resetBookingFlow();
       set({ user: null, isAuthenticated: false });
     }
   },
