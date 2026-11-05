@@ -280,11 +280,11 @@ export default function BoardingDroppingScreen() {
                         <AppText variant="bodyLargeBold" style={[styles.pointName, { color: colors.text }]}>
                           {item.PickupName}
                         </AppText>
-                        {item.Address && (
+                        {item.Address?.trim() ? (
                           <AppText variant="bodySmall" style={[styles.pointAddress, { color: colors.textSecondary }]}>
                             {item.Address}
                           </AppText>
-                        )}
+                        ) : null}
                         {isPopular && (
                           <View style={styles.popularBadge}>
                             <AppText variant="caption" style={[styles.popularBadgeText, { fontWeight: '700' }]}>
@@ -344,11 +344,11 @@ export default function BoardingDroppingScreen() {
                         <AppText variant="bodyLargeBold" style={[styles.pointName, { color: colors.text }]}>
                           {item.DropoffName}
                         </AppText>
-                        {item.Address && (
+                        {item.Address?.trim() ? (
                           <AppText variant="bodySmall" style={[styles.pointAddress, { color: colors.textSecondary }]}>
                             {item.Address}
                           </AppText>
-                        )}
+                        ) : null}
                         {isPopular && (
                           <View style={styles.popularBadge}>
                             <AppText variant="caption" style={[styles.popularBadgeText, { fontWeight: '700' }]}>

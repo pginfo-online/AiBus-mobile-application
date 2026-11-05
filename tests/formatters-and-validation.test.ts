@@ -1,5 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert';
+import { isValidBookingName } from '../src/features/booking/bookingName.ts';
+
+test('booking names reject generated profile placeholders and allow human names', () => {
+  assert.equal(isValidBookingName('Traveler 0383'), false);
+  assert.equal(isValidBookingName(''), false);
+  assert.equal(isValidBookingName('  A.  '), false);
+  assert.equal(isValidBookingName('  Anjali Rao  '), true);
+  assert.equal(isValidBookingName('Anne-Marie O’Neil'), true);
+  assert.equal(isValidBookingName('अंजली राव'), true);
+});
 
 // Indian GSTIN validation regex (15-character alphanumeric according to GST format rules)
 const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;

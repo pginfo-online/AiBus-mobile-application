@@ -1,3 +1,4 @@
+import { isValidBookingName } from '../../features/booking/bookingName';
 import React, { useRef, useState } from 'react';
 import {
   View,
@@ -52,6 +53,8 @@ export default function PassengerDetailsScreen() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const [isLockingSeats, setIsLockingSeats] = useState(false);
 
+  const profileName = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim();
+
   // Initialize passenger list per selected seat
   const [passengerForms, setPassengerForms] = useState<PassengerItem[]>(() => {
     return selectedSeats.map((seat, idx) => ({
@@ -60,15 +63,13 @@ export default function PassengerDetailsScreen() {
       fare: seat.fare,
       gender: seat.requiredGender ?? 'M',
       age: 28,
-      name: idx === 0 && user ? `${user.firstName} ${user.lastName}`.trim() : '',
+      name: idx === 0 && isValidBookingName(profileName) ? profileName : '',
       isAcSeat: selectedBus?.IsAC ?? false,
     }));
   });
 
   // Contact details
-  const [contactName, setLocalContactName] = useState(
-    user ? `${user.firstName} ${user.lastName}`.trim() : ''
-  );
+  const [contactName, setLocalContactName] = useState('');
   const [contactEmail, setLocalContactEmail] = useState(user?.email || '');
   const [contactPhone, setLocalContactPhone] = useState(user?.phone || '');
 
@@ -102,8 +103,8 @@ export default function PassengerDetailsScreen() {
         Alert.alert('Restricted seat', `Seat ${p.seatNo} is reserved for ${requiredGender === 'F' ? 'women' : 'men'}.`);
         return;
       }
-      if (!p.name || p.name.trim().length < 2) {
-        Alert.alert('Validation Error', `Please enter a valid name for Seat ${p.seatNo}.`);
+      if (!isValidBookingName(p.name)) {
+        Alert.alert('Validation Error', t('passenger.invalid_name', { seat: p.seatNo }));
         return;
       }
       if (!Number.isInteger(p.age) || p.age < 1 || p.age > 120) {
@@ -113,6 +114,16 @@ export default function PassengerDetailsScreen() {
     }
 
     // 2. Validate contact details
+    const bookingContactName = contactName.trim() || passengerForms[0].name.trim();
+    if (!isValidBookingName(bookingContactName)) {
+      Alert.alert('Validation Error', t('passenger.invalid_contact_name'));
+      return;
+    }
+
+    const bookingPassengers = passengerForms.map((passenger) => ({
+      ...passenger,
+      name: passenger.name.trim(),
+    }));
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail.trim())) {
       Alert.alert('Validation Error', 'Please enter a valid email address for booking ticket.');
       return;
@@ -136,9 +147,9 @@ export default function PassengerDetailsScreen() {
     }
 
     // Save to booking store
-    setPassengers(passengerForms);
+    setPassengers(bookingPassengers);
     setContactInfo({
-      name: contactName || passengerForms[0].name,
+      name: bookingContactName,
       email: contactEmail.trim().toLowerCase(),
       phone: contactPhone.trim().replace(/^\+91\s*/, ''),
     });
@@ -162,21 +173,13 @@ export default function PassengerDetailsScreen() {
           pickupId: selectedBoardingPoint?.code || '',
           dropoffId: selectedDroppingPoint?.code || '',
           contactInfo: {
-            customerName: contactName || passengerForms[0].name,
+            customerName: bookingContactName,
             email: contactEmail.trim().toLowerCase(),
             phone: contactPhone.trim().replace(/^\+91\s*/, ''),
             mobile: contactPhone.trim().replace(/^\+91\s*/, ''),
           },
           gstDetails: hasGst && gstin ? { gstin: gstin.trim().toUpperCase(), gstCompany: gstCompany.trim() } : undefined,
-          passengers: passengerForms.map((p) => ({
-            seatNo: p.seatNo,
-            seatTypeId: p.seatTypeId,
-            fare: p.fare,
-            gender: p.gender,
-            age: p.age,
-            name: p.name.trim(),
-            isAcSeat: p.isAcSeat,
-          })),
+          passengers: bookingPassengers,
         });
 
         setActiveHold({
@@ -328,6 +331,14 @@ export default function PassengerDetailsScreen() {
           <AppText variant="caption" style={{ color: colors.textSecondary, marginBottom: spacing.md }}>
             {t('passenger.contact_subtitle')}
           </AppText>
+
+          <AppInput
+            label={t('passenger.contact_name')}
+            value={contactName}
+            onChangeText={setLocalContactName}
+            placeholder={t('passenger.contact_name_placeholder')}
+            autoCapitalize="words"
+          />
 
           <AppInput
             label={t('passenger.email')}
