@@ -1,491 +1,719 @@
-import { isValidBookingName } from '../../features/booking/bookingName';
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState } from "react";
 import {
-  View,
-  ScrollView,
-  Pressable,
-  StyleSheet,
-  Switch,
   Alert,
-} from 'react-native';
-import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { useAppTheme } from '../../design-system/theme';
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  Switch,
+  View,
+} from "react-native";
+import { useRouter } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import { AppButton, AppCard, AppInput, AppText } from "../../design-system";
+import { useAppTheme } from "../../design-system/theme";
+import { useTranslation } from "../../core/localization";
+import { useBookingStore, PassengerItem } from "../../stores/bookingStore";
+import { useAuthStore } from "../../stores/authStore";
+import { useHoldSeatsMutation } from "../../features/booking/useBookingMutations";
 import {
-  AppText,
-  AppCard,
-  AppButton,
-  AppInput,
-  AppDivider,
-  AppBadge,
-} from '../../design-system';
-import { useTranslation } from '../../core/localization';
-import { useBookingStore, PassengerItem } from '../../stores/bookingStore';
-import { useAuthStore } from '../../stores/authStore';
+  PassengerError,
+  PassengerHeader,
+  PassengerSheet,
+  PassengersSkeleton,
+  StatePicker,
+} from "../../features/passengers/PassengerComponents";
+import { PassengerForm } from "../../features/passengers/PassengerForm";
 import {
-  useHoldSeatsMutation,
-} from '../../features/booking/useBookingMutations';
+  availableSeatIndex,
+  passengerAge,
+  SavedPassenger,
+  validEmail,
+  validGstin,
+  validMobile,
+} from "../../features/passengers/passengerModel";
+import {
+  usePassengerProfile,
+  usePassengers,
+  useSavePassenger,
+} from "../../features/passengers/usePassengers";
 
 export default function PassengerDetailsScreen() {
   const router = useRouter();
-  const { colors, spacing, radii, shadows } = useAppTheme();
-  const { t } = useTranslation();
-
+  const { colors } = useAppTheme();
+  const { t, language } = useTranslation();
+  const booking = useBookingStore();
   const user = useAuthStore((s) => s.user);
-
-  const {
-    fromCity,
-    toCity,
-    journeyDate,
-    selectedBus,
-    selectedSeats,
-    selectedBoardingPoint,
-    selectedDroppingPoint,
-    setActiveHold,
-    setPassengers,
-    setContactInfo,
-    setGstDetails,
-  } = useBookingStore();
-
-  const holdMutation = useHoldSeatsMutation();
-  const lockingSeats = useRef(false);
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  const [isLockingSeats, setIsLockingSeats] = useState(false);
-
-  const profileName = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim();
-
-  // Initialize passenger list per selected seat
-  const [passengerForms, setPassengerForms] = useState<PassengerItem[]>(() => {
-    return selectedSeats.map((seat, idx) => ({
-      seatNo: seat.seatNo,
-      seatTypeId: seat.seatType,
-      fare: seat.fare,
-      gender: seat.requiredGender ?? 'M',
-      age: 28,
-      name: idx === 0 && isValidBookingName(profileName) ? profileName : '',
-      isAcSeat: selectedBus?.IsAC ?? false,
-    }));
+  const authenticated = useAuthStore((s) => s.isAuthenticated);
+  const profile = usePassengerProfile();
+  const query = usePassengers();
+  const save = useSavePassenger();
+  const hold = useHoldSeatsMutation();
+  const [sheet, setSheet] = useState<"details" | "contact" | "add" | null>(
+    null,
+  );
+  const [assignments, setAssignments] = useState<(string | null)[]>(() =>
+    booking.selectedSeats.map(
+      (seat) =>
+        booking.passengers.find((p) => p.seatNo === seat.seatNo)
+          ?.savedPassengerId || null,
+    ),
+  );
+  type Contact = { phone: string; email: string; state: string };
+  const [contactOverride, setContact] = useState<Contact | null>(
+    booking.contactPhone
+      ? {
+          phone: booking.contactPhone,
+          email: booking.contactEmail,
+          state: booking.contactState || "",
+        }
+      : null,
+  );
+  const contactProfile = profile.data || user;
+  const contact = contactOverride || {
+    phone: contactProfile?.personalPhone || contactProfile?.phone || "",
+    email:
+      contactProfile?.contactEmail ??
+      (contactProfile?.email?.endsWith("@mobile.aibus.app")
+        ? ""
+        : contactProfile?.email) ??
+      "",
+    state: contactProfile?.state || "",
+  };
+  const [draftContact, setDraftContact] = useState(contact);
+  const [contactError, setContactError] = useState("");
+  const [hasGst, setHasGst] = useState(Boolean(booking.gstin));
+  const [gst, setGst] = useState({
+    gstin: booking.gstin || "",
+    gstCompany: booking.gstCompany || "",
+    businessAddress: booking.gstAddress || "",
+    email: booking.gstEmail || "",
   });
-
-  // Contact details
-  const [contactName, setLocalContactName] = useState('');
-  const [contactEmail, setLocalContactEmail] = useState(user?.email || '');
-  const [contactPhone, setLocalContactPhone] = useState(user?.phone || '');
-
-  // GST details
-  const [hasGst, setHasGst] = useState(false);
-  const [gstin, setLocalGstin] = useState('');
-  const [gstCompany, setLocalGstCompany] = useState('');
-
-  const updatePassengerField = (
-    index: number,
-    field: keyof PassengerItem,
-    value: any
-  ) => {
-    const updated = [...passengerForms];
-    updated[index] = { ...updated[index], [field]: value };
-    setPassengerForms(updated);
+  const [error, setError] = useState("");
+  const locking = useRef(false);
+  const {
+    selectedBus: bus,
+    selectedSeats: seats,
+    selectedBoardingPoint: pickup,
+    selectedDroppingPoint: drop,
+    journeyDate,
+  } = booking;
+  const passengers = query.data || [];
+  const selectedCount = assignments.filter(Boolean).length;
+  const locale = `${language}-IN`;
+  const date = new Date(`${journeyDate}T12:00:00`).toLocaleDateString(locale, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+  const busName =
+    bus?.CompanyName || bus?.OperatorName || bus?.BusName || t("pax.bus");
+  const busType = bus?.BusType || bus?.BusTypeName || "";
+  const toggle = (passenger: SavedPassenger) => {
+    setError("");
+    const index = assignments.indexOf(passenger.id);
+    if (index >= 0) {
+      setAssignments((current) =>
+        current.map((id) => (id === passenger.id ? null : id)),
+      );
+      return;
+    }
+    const age = passengerAge(passenger, new Date(`${journeyDate}T12:00:00`));
+    if (age < 1 || age > 120) {
+      setError(t("pax.invalid_age"));
+      return;
+    }
+    const free = availableSeatIndex(seats, assignments, passenger.gender);
+    if (free < 0) {
+      setError(t("pax.no_matching_seat"));
+      return;
+    }
+    setAssignments((current) =>
+      current.map((id, seatIndex) => (seatIndex === free ? passenger.id : id)),
+    );
   };
-
-  const handleProceed = () => {
-    if (lockingSeats.current) return;
-    if (!isAuthenticated) {
-      router.push('/(auth)/login');
+  const validateContact = (value: typeof contact) =>
+    !validMobile(value.phone)
+      ? t("pax.invalid_mobile")
+      : !validEmail(value.email.trim())
+        ? t("pax.invalid_email")
+        : !value.state
+          ? t("pax.required_state")
+          : "";
+  const proceed = async () => {
+    if (locking.current) return;
+    if (!authenticated) {
+      router.push("/(auth)/login");
       return;
     }
-    if (!selectedBus || !selectedBoardingPoint || !selectedDroppingPoint || !passengerForms.length) return;
-    // 1. Validate passenger inputs
-    for (let i = 0; i < passengerForms.length; i++) {
-      const p = passengerForms[i];
-      const requiredGender = selectedSeats[i]?.requiredGender;
-      if (requiredGender && p.gender !== requiredGender) {
-        Alert.alert('Restricted seat', `Seat ${p.seatNo} is reserved for ${requiredGender === 'F' ? 'women' : 'men'}.`);
-        return;
-      }
-      if (!isValidBookingName(p.name)) {
-        Alert.alert('Validation Error', t('passenger.invalid_name', { seat: p.seatNo }));
-        return;
-      }
-      if (!Number.isInteger(p.age) || p.age < 1 || p.age > 120) {
-        Alert.alert('Validation Error', `Please enter a valid age (1-120) for Seat ${p.seatNo}.`);
-        return;
-      }
-    }
-
-    // 2. Validate contact details
-    const bookingContactName = contactName.trim() || passengerForms[0].name.trim();
-    if (!isValidBookingName(bookingContactName)) {
-      Alert.alert('Validation Error', t('passenger.invalid_contact_name'));
+    if (!bus || !pickup || !drop || !seats.length) {
+      setError(t("pax.missing_journey"));
       return;
     }
-
-    const bookingPassengers = passengerForms.map((passenger) => ({
-      ...passenger,
-      name: passenger.name.trim(),
-    }));
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail.trim())) {
-      Alert.alert('Validation Error', 'Please enter a valid email address for booking ticket.');
+    if (selectedCount !== seats.length) {
+      setError(t("pax.select_count", { count: seats.length }));
       return;
     }
-
-    if (!/^[6-9]\d{9}$/.test(contactPhone.trim().replace(/^\+91\s*/, ''))) {
-      Alert.alert('Validation Error', 'Please enter a valid 10-digit mobile number.');
+    const invalidContact = validateContact(contact);
+    if (invalidContact) {
+      setContactError(invalidContact);
+      setDraftContact(contact);
+      setSheet("contact");
       return;
     }
-
-    // 3. Validate GST if enabled
-    if (hasGst) {
-      if (!gstin || gstin.trim().length !== 15) {
-        Alert.alert('Validation Error', 'GSTIN must be exactly 15 alphanumeric characters.');
-        return;
-      }
-      if (!gstCompany || gstCompany.trim().length < 2) {
-        Alert.alert('Validation Error', 'Please enter your registered Company Name for GST.');
-        return;
-      }
+    if (
+      hasGst &&
+      (!validGstin(gst.gstin.trim()) ||
+        gst.gstCompany.trim().length < 2 ||
+        gst.businessAddress.trim().length < 5 ||
+        !validEmail(gst.email.trim()))
+    ) {
+      setError(t("pax.invalid_gst"));
+      return;
     }
-
-    // Save to booking store
-    setPassengers(bookingPassengers);
-    setContactInfo({
-      name: bookingContactName,
-      email: contactEmail.trim().toLowerCase(),
-      phone: contactPhone.trim().replace(/^\+91\s*/, ''),
+    const details: PassengerItem[] = [];
+    for (let index = 0; index < seats.length; index++) {
+      const passenger = passengers.find((p) => p.id === assignments[index]);
+      const seat = seats[index];
+      if (
+        !passenger ||
+        (seat.requiredGender && seat.requiredGender !== passenger.gender)
+      ) {
+        setError(t("pax.no_matching_seat"));
+        return;
+      }
+      const age = passengerAge(passenger, new Date(`${journeyDate}T12:00:00`));
+      if (age < 1 || age > 120) {
+        setError(t("pax.invalid_age"));
+        return;
+      }
+      details.push({
+        savedPassengerId: passenger.id,
+        seatNo: seat.seatNo,
+        seatTypeId: seat.seatType,
+        fare: seat.fare,
+        gender: passenger.gender,
+        age,
+        name: passenger.name,
+        isAcSeat: bus.IsAC ?? false,
+      });
+    }
+    locking.current = true;
+    setError("");
+    booking.setPassengers(details);
+    booking.setContactInfo({
+      name: details[0].name,
+      phone: contact.phone,
+      email: contact.email.trim().toLowerCase(),
+      state: contact.state,
     });
-
-    if (hasGst) {
-      setGstDetails(gstin.trim().toUpperCase(), gstCompany.trim());
-    } else {
-      setGstDetails(undefined, undefined);
+    booking.setGstDetails(
+      hasGst ? gst.gstin.trim() : undefined,
+      hasGst ? gst.gstCompany.trim() : undefined,
+      hasGst ? gst.businessAddress.trim() : undefined,
+      hasGst ? gst.email.trim().toLowerCase() : undefined,
+    );
+    try {
+      const held = await hold.mutateAsync({
+        fromCityId: booking.fromCity.providerCityId,
+        toCityId: booking.toCity.providerCityId,
+        journeyDate,
+        busId: bus.RouteBusId || bus.BusId,
+        pickupId: pickup.code,
+        dropoffId: drop.code,
+        contactInfo: {
+          customerName: details[0].name,
+          phone: contact.phone,
+          mobile: contact.phone,
+          email: contact.email.trim().toLowerCase(),
+          state: contact.state,
+        },
+        gstDetails: hasGst
+          ? {
+              gstin: gst.gstin.trim(),
+              gstCompany: gst.gstCompany.trim(),
+              businessAddress: gst.businessAddress.trim(),
+              email: gst.email.trim().toLowerCase(),
+            }
+          : undefined,
+        passengers: details,
+      });
+      if (useAuthStore.getState().user?.id !== user?.id) return;
+      booking.setActiveHold({
+        id: held.id,
+        providerHoldId: held.providerHoldId,
+        expiresAt: held.expiresAt,
+        ttlSeconds: held.ttlSeconds ?? 600,
+        totalFare:
+          held.totalFare ?? seats.reduce((sum, seat) => sum + seat.fare, 0),
+      });
+      router.push("/booking/review");
+    } catch {
+      Alert.alert(t("pax.hold_error_title"), t("pax.hold_error"), [
+        { text: t("common.cancel"), style: "cancel" },
+        {
+          text: t("pax.choose_seats"),
+          onPress: () => router.navigate("/booking/seat-map"),
+        },
+      ]);
+    } finally {
+      locking.current = false;
     }
-
-    // Early Lock: Hold seats on GDS and pre-create checkout session before mounting Review
-    const lockSeatsAndProceed = async () => {
-      lockingSeats.current = true;
-      setIsLockingSeats(true);
-      try {
-        const holdRes = await holdMutation.mutateAsync({
-          fromCityId: fromCity.providerCityId,
-          toCityId: toCity.providerCityId,
-          journeyDate,
-          busId: selectedBus.RouteBusId || selectedBus.BusId,
-          pickupId: selectedBoardingPoint?.code || '',
-          dropoffId: selectedDroppingPoint?.code || '',
-          contactInfo: {
-            customerName: bookingContactName,
-            email: contactEmail.trim().toLowerCase(),
-            phone: contactPhone.trim().replace(/^\+91\s*/, ''),
-            mobile: contactPhone.trim().replace(/^\+91\s*/, ''),
-          },
-          gstDetails: hasGst && gstin ? { gstin: gstin.trim().toUpperCase(), gstCompany: gstCompany.trim() } : undefined,
-          passengers: bookingPassengers,
-        });
-
-        setActiveHold({
-          id: holdRes.id,
-          providerHoldId: holdRes.providerHoldId,
-          expiresAt: holdRes.expiresAt,
-          ttlSeconds: holdRes.ttlSeconds || 600,
-          totalFare: holdRes.totalFare || selectedSeats.reduce((sum, s) => sum + s.fare, 0),
-        });
-
-        router.push('/booking/review' as any);
-      } catch (err: any) {
-        console.error('Seat hold error:', err);
-        Alert.alert(
-          'Seats Unavailable',
-          err.message || 'The selected seat(s) could not be reserved. Another traveler may have just booked them. Please select different seats.',
-          [
-            {
-              text: 'Choose Other Seats',
-              onPress: () => router.navigate('/booking/seat-map' as any),
-            },
-            { text: 'Cancel', style: 'cancel' },
-          ]
-        );
-      } finally {
-        lockingSeats.current = false;
-        setIsLockingSeats(false);
-      }
-    };
-
-    lockSeatsAndProceed();
   };
-
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['bottom']}>
-      {/* 1. Header Overview Bar */}
-
-
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.scrollContent, { padding: spacing.base, paddingBottom: 110 }]}
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+      <PassengerHeader
+        title={t("pax.information")}
+        subtitle={`${booking.fromCity.name} → ${booking.toCity.name}`}
+      />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
       >
-        {/* 2. Passenger Forms for each seat */}
-        <AppText variant="heading3" style={{ color: colors.text, marginBottom: spacing.md }}>
-          {t('passenger.summary')}
-        </AppText>
-
-        {passengerForms.map((p, index) => (
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ padding: 16, gap: 16 }}
+        >
           <AppCard
-            key={`p-seat-${p.seatNo}`}
-            variant="elevated"
             padding="base"
-            style={[styles.passengerCard, { marginBottom: spacing.md }]}
+            variant="elevated"
+            style={{ borderRadius: 24 }}
           >
-            <View style={styles.seatHeaderRow}>
-              <View style={styles.seatBadgePill}>
-                <Ionicons name="bus" size={16} color={colors.primary} />
-                <AppText variant="bodySmallMedium" style={{ color: colors.primary, marginLeft: 6, fontWeight: '700' }}>
-                  Seat {p.seatNo}
-                </AppText>
-              </View>
-
-              <AppText variant="bodySmallMedium" style={{ color: colors.textSecondary }}>
-                ₹{p.fare}
-              </AppText>
-            </View>
-
-            {/* Name Input */}
-            <AppInput
-              label={t('passenger.name')}
-              value={p.name}
-              onChangeText={(text) => updatePassengerField(index, 'name', text)}
-              placeholder={t('passenger.name_placeholder')}
-              autoCapitalize="words"
-            />
-
-            {/* Age & Gender Row */}
-            <View style={styles.ageGenderRow}>
-              <View style={{ flex: 1, marginRight: 12 }}>
-                <AppInput
-                  label={t('passenger.age')}
-                  value={p.age ? String(p.age) : ''}
-                  onChangeText={(text) => updatePassengerField(index, 'age', parseInt(text, 10) || '')}
-                  placeholder={t('passenger.age_placeholder')}
-                  keyboardType="number-pad"
-                  maxLength={3}
-                />
-              </View>
-
-              {/* Gender Radio Selector */}
+            <AppText variant="heading3">{busName}</AppText>
+            <AppText style={{ color: colors.textSecondary, marginTop: 6 }}>
+              {booking.fromCity.name} → {booking.toCity.name}
+            </AppText>
+            <AppText style={{ marginTop: 12, marginBottom: 8 }}>{date}</AppText>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "flex-start",
+                gap: 12,
+                marginBottom: 20,
+              }}
+            >
               <View style={{ flex: 1 }}>
-                <AppText variant="bodySmallMedium" style={{ color: colors.textSecondary, marginBottom: 4 }}>
-                  {t('passenger.gender')}
+                <AppText variant="bodyMedium">{pickup?.time || "—"}</AppText>
+                <AppText style={{ color: colors.textSecondary }}>
+                  {pickup?.name || booking.fromCity.name}
                 </AppText>
-                <View style={styles.genderButtonRow}>
-                  <Pressable
-                    onPress={() => updatePassengerField(index, 'gender', 'M')}
-                    style={[
-                      styles.genderPill,
-                      {
-                        backgroundColor: p.gender === 'M' ? colors.primarySoft : colors.surfaceSecondary,
-                        borderColor: p.gender === 'M' ? colors.primary : colors.border,
-                      },
-                    ]}
-                  >
-                    <AppText
-                      variant="bodySmallMedium"
-                      style={{
-                        color: p.gender === 'M' ? colors.primary : colors.text,
-                        fontWeight: p.gender === 'M' ? '700' : '500',
-                      }}
-                    >
-                      {t('passenger.male')}
-                    </AppText>
-                  </Pressable>
-
-                  <Pressable
-                    onPress={() => updatePassengerField(index, 'gender', 'F')}
-                    style={[
-                      styles.genderPill,
-                      {
-                        backgroundColor: p.gender === 'F' ? colors.primarySoft : colors.surfaceSecondary,
-                        borderColor: p.gender === 'F' ? colors.primary : colors.border,
-                        marginLeft: 8,
-                      },
-                    ]}
-                  >
-                    <AppText
-                      variant="bodySmallMedium"
-                      style={{
-                        color: p.gender === 'F' ? colors.primary : colors.text,
-                        fontWeight: p.gender === 'F' ? '700' : '500',
-                      }}
-                    >
-                      {t('passenger.female')}
-                    </AppText>
-                  </Pressable>
-                </View>
               </View>
+              <Ionicons
+                name="arrow-forward"
+                color={colors.textMuted}
+                size={20}
+              />
+              <View style={{ flex: 1 }}>
+                <AppText variant="bodyMedium" align="right">
+                  {drop?.time || "—"}
+                </AppText>
+                <AppText align="right" style={{ color: colors.textSecondary }}>
+                  {drop?.name || booking.toCity.name}
+                </AppText>
+              </View>
+            </View>
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                gap: 12,
+              }}
+            >
+              <AppText style={{ flex: 1 }}>
+                {t("pax.seats")}: {seats.map((seat) => seat.seatNo).join(", ")}
+              </AppText>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setSheet("details")}
+              >
+                <AppText
+                  style={{
+                    color: colors.primary,
+                    textDecorationLine: "underline",
+                  }}
+                >
+                  {t("pax.view_details")}
+                </AppText>
+              </Pressable>
             </View>
           </AppCard>
-        ))}
-
-        {/* 3. Contact Information Card */}
-        <AppCard variant="elevated" padding="base" style={[styles.contactCard, { marginBottom: spacing.md }]}>
-          <AppText variant="heading3" style={{ color: colors.text, marginBottom: 2 }}>
-            {t('passenger.contact_title')}
-          </AppText>
-          <AppText variant="caption" style={{ color: colors.textSecondary, marginBottom: spacing.md }}>
-            {t('passenger.contact_subtitle')}
-          </AppText>
-
-          <AppInput
-            label={t('passenger.contact_name')}
-            value={contactName}
-            onChangeText={setLocalContactName}
-            placeholder={t('passenger.contact_name_placeholder')}
-            autoCapitalize="words"
+          <AppCard
+            padding="base"
+            variant="elevated"
+            style={{ borderRadius: 24 }}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 12,
+              }}
+            >
+              <AppText variant="heading3" style={{ flex: 1 }}>
+                {t("passenger.contact_title")}
+              </AppText>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setDraftContact(contact);
+                  setContactError("");
+                  setSheet("contact");
+                }}
+              >
+                <AppText style={{ color: colors.primary }}>
+                  {t("pax.edit")}
+                </AppText>
+              </Pressable>
+            </View>
+            <AppText
+              style={{
+                color: colors.textSecondary,
+                marginTop: 4,
+                marginBottom: 16,
+              }}
+            >
+              {t("passenger.contact_subtitle")}
+            </AppText>
+            <AppText>+91 {contact.phone || "—"}</AppText>
+            <AppText style={{ marginTop: 8 }}>
+              {contact.email || t("pax.add_email")}
+            </AppText>
+            <AppText style={{ marginTop: 8 }}>
+              {contact.state
+                ? t(`state.${contact.state}`)
+                : t("pax.required_state")}
+            </AppText>
+          </AppCard>
+          <AppCard
+            padding="base"
+            variant="elevated"
+            style={{ borderRadius: 24 }}
+          >
+            <AppText variant="heading3">{t("pax.passenger_details")}</AppText>
+            <AppText
+              style={{
+                color: colors.textSecondary,
+                marginTop: 4,
+                marginBottom: 16,
+              }}
+            >
+              {t("pax.selected_count", {
+                selected: selectedCount,
+                total: seats.length,
+              })}
+            </AppText>
+            {!authenticated ? (
+              <AppButton
+                title={t("account.login")}
+                onPress={() => router.push("/(auth)/login")}
+              />
+            ) : query.isPending ? (
+              <PassengersSkeleton />
+            ) : (
+              <>
+                {query.isError && (
+                  <PassengerError
+                    onRetry={() => {
+                      void query.refetch();
+                    }}
+                  />
+                )}
+                {passengers.length === 0 && !query.isError && (
+                  <AppText
+                    style={{ color: colors.textSecondary, marginBottom: 16 }}
+                  >
+                    {t("pax.empty")}
+                  </AppText>
+                )}
+                {passengers.map((passenger) => {
+                  const index = assignments.indexOf(passenger.id);
+                  const selected = index >= 0;
+                  return (
+                    <Pressable
+                      key={passenger.id}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: selected }}
+                      onPress={() => toggle(passenger)}
+                      disabled={hold.isPending}
+                      style={{
+                        padding: 16,
+                        marginBottom: 12,
+                        borderWidth: 1,
+                        borderColor: selected ? colors.primary : colors.border,
+                        backgroundColor: selected
+                          ? colors.primarySoft
+                          : colors.surface,
+                        borderRadius: 16,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 12,
+                      }}
+                    >
+                      <Ionicons
+                        name={selected ? "checkbox" : "square-outline"}
+                        size={24}
+                        color={selected ? colors.primary : colors.textMuted}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <AppText variant="bodyMedium">{passenger.name}</AppText>
+                        <AppText style={{ color: colors.textSecondary }}>
+                          {t(`pax.gender_${passenger.gender}`)},{" "}
+                          {t("pax.years", {
+                            age: passengerAge(
+                              passenger,
+                              new Date(`${journeyDate}T12:00:00`),
+                            ),
+                          })}
+                        </AppText>
+                        {selected && (
+                          <AppText
+                            style={{ color: colors.primary, marginTop: 4 }}
+                          >
+                            {t("pax.seat_assignment", {
+                              seat: seats[index]?.seatNo,
+                            })}
+                          </AppText>
+                        )}
+                      </View>
+                    </Pressable>
+                  );
+                })}
+                <AppButton
+                  title={t("pax.add_passengers")}
+                  onPress={() => setSheet("add")}
+                  variant="secondary"
+                  fullWidth
+                  disabled={hold.isPending}
+                />
+              </>
+            )}
+          </AppCard>
+          <AppCard
+            padding="base"
+            variant="elevated"
+            style={{ borderRadius: 24 }}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 12,
+              }}
+            >
+              <AppText variant="bodyMedium" style={{ flex: 1 }}>
+                {t("passenger.gst_toggle")}
+              </AppText>
+              <Switch
+                accessibilityLabel={t("passenger.gst_toggle")}
+                value={hasGst}
+                onValueChange={setHasGst}
+                disabled={hold.isPending}
+                trackColor={{ false: colors.border, true: colors.primary }}
+              />
+            </View>
+            {hasGst && (
+              <View style={{ marginTop: 24 }}>
+                <AppInput
+                  label={t("passenger.gstin")}
+                  value={gst.gstin}
+                  onChangeText={(gstin) =>
+                    setGst((current) => ({
+                      ...current,
+                      gstin: gstin.toUpperCase(),
+                    }))
+                  }
+                  autoCapitalize="characters"
+                  maxLength={15}
+                />
+                <AppInput
+                  label={t("passenger.gst_company")}
+                  value={gst.gstCompany}
+                  onChangeText={(gstCompany) =>
+                    setGst((current) => ({ ...current, gstCompany }))
+                  }
+                  maxLength={100}
+                />
+                <AppInput
+                  label={t("pax.business_address")}
+                  value={gst.businessAddress}
+                  onChangeText={(businessAddress) =>
+                    setGst((current) => ({ ...current, businessAddress }))
+                  }
+                  multiline
+                  maxLength={500}
+                />
+                <AppInput
+                  label={t("pax.business_email")}
+                  value={gst.email}
+                  onChangeText={(email) =>
+                    setGst((current) => ({ ...current, email }))
+                  }
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  maxLength={254}
+                />
+              </View>
+            )}
+          </AppCard>
+          {error ? <PassengerError message={error} /> : null}
+        </ScrollView>
+        <View
+          style={{
+            backgroundColor: colors.surface,
+            borderTopWidth: 1,
+            borderColor: colors.border,
+            padding: 16,
+            gap: 12,
+          }}
+        >
+          <View
+            style={{ flexDirection: "row", justifyContent: "space-between" }}
+          >
+            <AppText>{t("pax.amount")}</AppText>
+            <AppText variant="heading3">
+              ₹
+              {seats
+                .reduce((sum, seat) => sum + seat.fare, 0)
+                .toLocaleString(locale)}
+            </AppText>
+          </View>
+          <AppButton
+            title={t(
+              hold.isPending ? "pax.securing" : "passenger.proceed_review",
+            )}
+            onPress={() => {
+              void proceed();
+            }}
+            loading={hold.isPending}
+            disabled={query.isPending && authenticated}
+            size="lg"
+            fullWidth
           />
-
+        </View>
+      </KeyboardAvoidingView>
+      <PassengerSheet
+        visible={sheet === "details"}
+        title={t("pax.booking_details")}
+        onClose={() => setSheet(null)}
+      >
+        <ScrollView contentContainerStyle={{ gap: 20 }}>
+          <View>
+            <AppText variant="heading3">{busName}</AppText>
+            <AppText style={{ color: colors.textSecondary }}>{busType}</AppText>
+            <AppText>{date}</AppText>
+          </View>
+          {[
+            { label: t("pax.pickup"), point: pickup },
+            { label: t("pax.drop"), point: drop },
+          ].map(({ label, point }) => (
+            <View
+              key={label}
+              style={{
+                borderLeftWidth: 3,
+                borderColor: colors.primary,
+                paddingLeft: 16,
+                gap: 4,
+              }}
+            >
+              <AppText style={{ color: colors.textSecondary }}>
+                {label} · {point?.time}
+              </AppText>
+              <AppText variant="bodyMedium">{point?.name || "—"}</AppText>
+              {point?.address && <AppText>{point.address}</AppText>}
+              {point?.landmark && <AppText>{point.landmark}</AppText>}
+              {point?.contact && <AppText>{point.contact}</AppText>}
+            </View>
+          ))}
+          <AppText variant="heading3">{t("pax.seats")}</AppText>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            {seats.map((seat) => (
+              <View
+                key={seat.seatNo}
+                style={{
+                  padding: 12,
+                  borderRadius: 12,
+                  backgroundColor: colors.primarySoft,
+                }}
+              >
+                <AppText>
+                  {seat.seatNo} ·{" "}
+                  {t(seat.deck === 2 ? "pax.upper_deck" : "pax.lower_deck")}
+                </AppText>
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+      </PassengerSheet>
+      <PassengerSheet
+        visible={sheet === "contact"}
+        title={t("passenger.contact_title")}
+        onClose={() => setSheet(null)}
+      >
+        <ScrollView keyboardShouldPersistTaps="handled">
           <AppInput
-            label={t('passenger.email')}
-            value={contactEmail}
-            onChangeText={setLocalContactEmail}
-            placeholder="e.g. rahul@example.com"
+            label={t("passenger.phone")}
+            value={draftContact.phone}
+            onChangeText={(phone) =>
+              setDraftContact((current) => ({ ...current, phone }))
+            }
+            keyboardType="phone-pad"
+            maxLength={10}
+          />
+          <AppInput
+            label={t("passenger.email")}
+            value={draftContact.email}
+            onChangeText={(email) =>
+              setDraftContact((current) => ({ ...current, email }))
+            }
             keyboardType="email-address"
             autoCapitalize="none"
-            leftIcon={<Ionicons name="mail-outline" size={18} color={colors.textMuted} />}
+            maxLength={254}
           />
-
-          <AppInput
-            label={t('passenger.phone')}
-            value={contactPhone}
-            onChangeText={setLocalContactPhone}
-            placeholder="10-digit mobile number"
-            keyboardType="phone-pad"
-            maxLength={13}
-            leftIcon={<Ionicons name="call-outline" size={18} color={colors.textMuted} />}
+          <StatePicker
+            value={draftContact.state}
+            onChange={(state) =>
+              setDraftContact((current) => ({ ...current, state }))
+            }
           />
-        </AppCard>
-
-        {/* 4. GSTIN (Optional) */}
-        <AppCard variant="outlined" padding="base" style={styles.gstCard}>
-          <View style={styles.gstToggleRow}>
-            <View style={{ flex: 1, marginRight: 8 }}>
-              <AppText variant="bodyMedium" style={{ color: colors.text, fontWeight: '600' }}>
-                {t('passenger.gst_toggle')}
-              </AppText>
-              <AppText variant="caption" style={{ color: colors.textSecondary }}>
-                Claim tax input credit for business travel
-              </AppText>
-            </View>
-            <Switch
-              value={hasGst}
-              onValueChange={setHasGst}
-              trackColor={{ false: colors.border, true: colors.primary }}
-              thumbColor="#FFFFFF"
-            />
-          </View>
-
-          {hasGst && (
-            <View style={{ marginTop: spacing.md }}>
-              <AppInput
-                label={t('passenger.gstin')}
-                value={gstin}
-                onChangeText={(text) => setLocalGstin(text.toUpperCase())}
-                placeholder="15-digit GSTIN number"
-                autoCapitalize="characters"
-                maxLength={15}
-              />
-              <AppInput
-                label={t('passenger.gst_company')}
-                value={gstCompany}
-                onChangeText={setLocalGstCompany}
-                placeholder="Registered business name"
-              />
-            </View>
-          )}
-        </AppCard>
-      </ScrollView>
-
-      {/* 5. Bottom Proceed Bar */}
-      <View
-        style={[
-          styles.bottomBar,
-          {
-            backgroundColor: colors.surface,
-            borderTopColor: colors.border,
-            ...shadows.lg,
-          },
-        ]}
+          {contactError ? <PassengerError message={contactError} /> : null}
+          <AppButton
+            title={t("common.save")}
+            fullWidth
+            onPress={() => {
+              const invalid = validateContact(draftContact);
+              if (invalid) {
+                setContactError(invalid);
+                return;
+              }
+              setContact(draftContact);
+              setSheet(null);
+            }}
+          />
+        </ScrollView>
+      </PassengerSheet>
+      <PassengerSheet
+        visible={sheet === "add"}
+        title={t("pax.new")}
+        onClose={() => setSheet(null)}
+        busy={save.isPending}
       >
-        <AppButton
-          title={isLockingSeats ? 'Securing Seats...' : t('passenger.proceed_review')}
-          onPress={handleProceed}
-          variant="primary"
-          size="lg"
-          fullWidth
-          loading={isLockingSeats}
-          icon={<Ionicons name="checkmark-done" size={20} color="#FFFFFF" />}
-        />
-      </View>
+        {sheet === "add" && (
+          <ScrollView keyboardShouldPersistTaps="handled">
+            <PassengerForm
+              quick
+              pending={save.isPending}
+              onSave={async (input) => {
+                const passenger = await save.mutateAsync(input);
+                setSheet(null);
+                toggle(passenger);
+              }}
+            />
+          </ScrollView>
+        )}
+      </PassengerSheet>
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
-  overviewBar: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-  },
-  scrollContent: {
-    paddingTop: 12,
-  },
-  passengerCard: {
-    width: '100%',
-  },
-  seatHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  seatBadgePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  ageGenderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  genderButtonRow: {
-    flexDirection: 'row',
-    height: 48,
-    alignItems: 'center',
-  },
-  genderPill: {
-    flex: 1,
-    height: 44,
-    borderRadius: 8,
-    borderWidth: 1.5,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  contactCard: {
-    width: '100%',
-  },
-  gstCard: {
-    width: '100%',
-  },
-  gstToggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  bottomBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderTopWidth: 1,
-  },
-});

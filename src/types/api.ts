@@ -97,6 +97,8 @@ export interface BookingResponseData {
   providerTicketNo?: string | null;
   providerPnrNo?: string | null;
   confirmedAt?: string | null;
+  walletAmount?: string | number;
+  payments?: { id: string; merchantTxnId: string; status: string; amount: string | number; gateway: string }[];
   pickupLocation?: string;
   pickupTime?: string;
   dropoffLocation?: string;
@@ -125,12 +127,13 @@ export interface BookingResponseData {
     seatNo: string;
     seatTypeId: number;
     fareTotal: string | number;
+    cancelledAt?: string | null;
   }[];
   passengers: {
     id: string;
     name: string;
     age: number;
-    gender: 'M' | 'F';
+    gender: 'M' | 'F' | 'O';
     seatNo: string;
     fare: string | number;
   }[];
@@ -144,8 +147,8 @@ export interface BookingResponseData {
 export interface TicketResponseData {
   id: string;
   bookingId: string;
-  ticketNumber: string;
-  pnrNumber: string;
+  ticketNumber: string | null;
+  pnrNumber: string | null;
   status: string;
   pdfUrl?: string | null;
   generatedAt: string;
@@ -183,7 +186,8 @@ export interface CancellationResultResponse {
     amount: number;
     status: string;
     destination: string;
-  };
+  } | null;
+  refunds?: { id: string; amount: string | number; status: string; destination: string }[];
   walletCredited?: boolean;
   newWalletBalance?: number | null;
 }

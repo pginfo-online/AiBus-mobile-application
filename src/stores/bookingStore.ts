@@ -28,10 +28,11 @@ export interface SelectedSeatItem {
 }
 
 export interface PassengerItem {
+  savedPassengerId?: string;
   seatNo: string;
   seatTypeId: number;
   fare: number;
-  gender: 'M' | 'F';
+  gender: 'M' | 'F' | 'O';
   age: number;
   name: string;
   isAcSeat: boolean;
@@ -63,6 +64,9 @@ interface BookingFlowState {
   contactPhone: string;
   gstin?: string;
   gstCompany?: string;
+  gstAddress?: string;
+  gstEmail?: string;
+  contactState?: string;
 
   // Active Hold & Transaction
   activeHold: HoldDetails | null;
@@ -86,8 +90,8 @@ interface BookingFlowState {
   setSelectedDroppingPoint: (point: BoardingDroppingPoint | null) => void;
   setPassengers: (passengers: PassengerItem[]) => void;
   updatePassenger: (index: number, passenger: PassengerItem) => void;
-  setContactInfo: (contact: { name: string; email: string; phone: string }) => void;
-  setGstDetails: (gstin?: string, gstCompany?: string) => void;
+  setContactInfo: (contact: { name: string; email: string; phone: string; state?: string }) => void;
+  setGstDetails: (gstin?: string, gstCompany?: string, gstAddress?: string, gstEmail?: string) => void;
   setActiveHold: (hold: HoldDetails | null) => void;
   setActiveBooking: (bookingId: string | null, bookingNumber: string | null) => void;
   applyCoupon: (coupon: AppliedCoupon) => void;
@@ -148,6 +152,8 @@ export const useBookingStore = create<BookingFlowState>((set, get) => ({
       selectedBoardingPoint: null,
       selectedDroppingPoint: null,
       passengers: [],
+      contactName: '', contactEmail: '', contactPhone: '', contactState: undefined,
+      gstin: undefined, gstCompany: undefined, gstAddress: undefined, gstEmail: undefined,
       activeHold: null,
       activeBookingId: null,
       activeBookingNumber: null,
@@ -203,14 +209,15 @@ export const useBookingStore = create<BookingFlowState>((set, get) => ({
     set({ passengers });
   },
 
-  setContactInfo: ({ name, email, phone }) =>
+  setContactInfo: ({ name, email, phone, state }) =>
     set({
       contactName: name,
       contactEmail: email,
       contactPhone: phone,
+      contactState: state,
     }),
 
-  setGstDetails: (gstin, gstCompany) => set({ gstin, gstCompany }),
+  setGstDetails: (gstin, gstCompany, gstAddress, gstEmail) => set({ gstin, gstCompany, gstAddress, gstEmail }),
 
   setActiveHold: (hold) => set({ activeHold: hold }),
 
@@ -228,6 +235,8 @@ export const useBookingStore = create<BookingFlowState>((set, get) => ({
       selectedBoardingPoint: null,
       selectedDroppingPoint: null,
       passengers: [],
+      contactName: '', contactEmail: '', contactPhone: '', contactState: undefined,
+      gstin: undefined, gstCompany: undefined, gstAddress: undefined, gstEmail: undefined,
       activeHold: null,
       activeBookingId: null,
       activeBookingNumber: null,

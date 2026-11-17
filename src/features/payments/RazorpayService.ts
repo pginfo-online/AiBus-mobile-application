@@ -30,7 +30,7 @@ export const RazorpayService = {
     intent: PaymentIntentResponse,
     options?: { redirectUrl?: string }
   ): Promise<RazorpayCheckoutResult> {
-    const redirectUrl = options?.redirectUrl || 'aibus://payment-result';
+    const redirectUrl = options?.redirectUrl || (Platform.OS === 'web' ? Linking.createURL('/payment-result') : 'aibus://payment-result');
 
     // Register active payment session with coordinator
     PaymentCoordinator.setActiveSession(intent.merchantTxnId);

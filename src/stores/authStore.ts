@@ -10,6 +10,11 @@ export interface UserProfile {
   firstName: string;
   lastName: string;
   phone?: string | null;
+  dateOfBirth?: string | null;
+  gender?: 'M' | 'F' | 'O' | null;
+  state?: string | null;
+  personalPhone?: string | null;
+  contactEmail?: string | null;
   role: string;
   walletBalance: string;
   emailVerified: boolean;
@@ -29,7 +34,7 @@ interface AuthState {
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isAuthenticated: false,
-  isBootstrapping: false,
+  isBootstrapping: true,
 
   setAuth: async (user, accessToken, refreshToken) => {
     await SecureTokenStorage.setAccessToken(accessToken);

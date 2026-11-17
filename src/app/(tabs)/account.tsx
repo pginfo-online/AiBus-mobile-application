@@ -233,6 +233,18 @@ export default function AccountScreen() {
           </Pressable>
 
           <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push(isAuthenticated ? '/passengers' : '/(auth)/login')}
+            style={[styles.menuItem, { borderBottomColor: colors.divider }]}
+          >
+            <View style={styles.menuLeft}>
+              <Ionicons name="people-outline" size={20} color={colors.textSecondary} />
+              <AppText variant="bodyMedium" style={{ color: colors.text, marginLeft: 12 }}>{t('pax.title')}</AppText>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </Pressable>
+
+          <Pressable
             onPress={() => router.navigate('/(tabs)/help' as any)}
             style={[styles.menuItem, { borderBottomColor: colors.divider }]}
           >

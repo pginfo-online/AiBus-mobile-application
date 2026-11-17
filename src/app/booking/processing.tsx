@@ -1,690 +1,212 @@
-import { PaymentCoordinator } from '../../features/payments/PaymentCoordinator';
-import type { ThemeColors } from '../../design-system/tokens/colors';
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState } from "react";
+import { View, ScrollView } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Ionicons } from "@expo/vector-icons";
+import { AppButton, AppCard, AppText } from "../../design-system";
+import { useAppTheme } from "../../design-system/theme";
+import { useTranslation } from "../../core/localization";
+import { apiClient } from "../../core/api/client";
 import {
-  View,
-  StyleSheet,
-  ActivityIndicator,
-  BackHandler,
-  ScrollView,
-  Pressable,
-  Alert,
-} from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
-import * as Clipboard from 'expo-clipboard';
-import { useAppTheme } from '../../design-system/theme';
-import {
-  AppText,
-  AppCard,
-  AppButton,
-  AppBadge,
-} from '../../design-system';
-import { useQueryClient } from '@tanstack/react-query';
-import { apiClient } from '../../core/api/client';
-import { useTranslation } from '../../core/localization';
-import type { VerifyPaymentResponse } from '../../features/payments/usePaymentMutations';
-import { useBookingStore } from '../../stores/bookingStore';
-import { PendingPaymentStorage } from '../../core/storage';
-import { TicketResponseData, BookingResponseData } from '../../types/api';
-
-const VERIFICATION_TIMEOUT_MS = 25000;
-
-export type VerificationPhase =
-  | 'VERIFYING'
-  | 'SUCCESS'
-  | 'FAILED'
-  | 'PENDING_TIMEOUT'
-  | 'BOOKING_CONFIRMATION_FAILED'
-  | 'BOOKING_CONFIRMATION_PENDING'
-  | 'NETWORK_ERROR';
+  PendingPaymentRecord,
+  PendingPaymentStorage,
+} from "../../core/storage";
+import { useAuthStore } from "../../stores/authStore";
+import { useBookingStore } from "../../stores/bookingStore";
+import { VerifyPaymentResponse } from "../../features/payments/usePaymentMutations";
+import { FlowSkeleton } from "../../features/booking/FlowSkeleton";
+import { bookingPhase } from "../../features/booking/bookingLifecycle";
 
 export default function ProcessingPaymentScreen() {
   const router = useRouter();
-  const { colors, spacing, shadows } = useAppTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const { colors } = useAppTheme();
   const { t } = useTranslation();
-
+  const client = useQueryClient();
   const params = useLocalSearchParams<{
     bookingId?: string;
     merchantTxnId?: string;
-    amount?: string;
-    gatewayOrderId?: string;
-    gatewayPaymentId?: string;
-    gatewaySignature?: string;
-    status?: string;
-    errorDescription?: string;
   }>();
-
-  const [phase, setPhase] = useState<VerificationPhase>('VERIFYING');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isVerifying, setIsVerifying] = useState<boolean>(true);
-  const [confirmedBooking, setConfirmedBooking] = useState<BookingResponseData | null>(null);
-  const [confirmedTicket, setConfirmedTicket] = useState<TicketResponseData | null>(null);
-  const [copiedPnr, setCopiedPnr] = useState<boolean>(false);
-
-  const [attempt, setAttempt] = useState(0);
-  const resetBookingFlow = useBookingStore((s) => s.resetBookingFlow);
-  const queryClient = useQueryClient();
-  // Prevent hardware back button while active verification is ongoing
+  const owner = useAuthStore((s) => s.user?.id);
+  const reset = useBookingStore((s) => s.resetBookingFlow);
+  const [pending, setPending] = useState<PendingPaymentRecord | null>(null);
+  const [started, setStarted] = useState(() => Date.now());
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const backAction = () => {
-      if (isVerifying) return true;
-      return false;
-    };
-
-    const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
-    return () => backHandler.remove();
-  }, [isVerifying]);
-
-  const {
-    bookingId, merchantTxnId, gatewayOrderId, gatewayPaymentId, gatewaySignature,
-  } = params;
-
-  useEffect(() => {
-    let mounted = true;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), VERIFICATION_TIMEOUT_MS);
-
-    async function verify() {
-      setIsVerifying(true);
-      setPhase('VERIFYING');
-      setErrorMessage(null);
-
-      try {
-        const pending = await PendingPaymentStorage.get();
-        const id = bookingId || pending?.bookingId;
-        const transactionId = merchantTxnId || pending?.merchantTxnId;
-        const matchingRecord = pending?.bookingId === id && pending?.merchantTxnId === transactionId
-          ? pending : null;
-
-        if (!id || !transactionId) {
-          if (mounted) {
-            setPhase('FAILED');
-            setErrorMessage('Payment details are unavailable. Check My Bookings for the latest status.');
-          }
-          return;
-        }
-
-        const callback = PaymentCoordinator.consumeLastResult(transactionId);
-        const config = { signal: controller.signal };
-        for (let poll = 0; poll < 4 && !controller.signal.aborted; poll++) {
-          const { data } = await apiClient.post<{ data: VerifyPaymentResponse }>('/payments/verify', {
-            bookingId: id,
-            merchantTxnId: transactionId,
-            gatewayOrderId: gatewayOrderId || matchingRecord?.gatewayOrderId || callback?.gatewayOrderId,
-            gatewayPaymentId: gatewayPaymentId || matchingRecord?.gatewayPaymentId || callback?.gatewayPaymentId,
-            gatewaySignature: gatewaySignature || matchingRecord?.gatewaySignature || callback?.gatewaySignature,
-          }, config);
-          if (!mounted || controller.signal.aborted) break;
-          const result = data.data;
-
-          if (result.status === 'SUCCESS' && result.booking?.status === 'CONFIRMED') {
-            queryClient.setQueryData(['bookings', id], result.booking);
-            if (result.ticket) queryClient.setQueryData(['tickets', 'booking', id], result.ticket);
-            setConfirmedBooking(result.booking);
-            setConfirmedTicket(result.ticket || null);
-            setPhase('SUCCESS');
-            resetBookingFlow();
-            return;
-          }
-          if (result.status === 'BOOKING_FAILED') {
-            setPhase('BOOKING_CONFIRMATION_FAILED');
-            setErrorMessage(result.message || 'The operator could not confirm this booking. Check My Bookings for refund status.');
-            return;
-          }
-          if (result.status === 'FAILED') {
-            setPhase('FAILED');
-            setErrorMessage(result.message || 'The payment could not be completed.');
-            return;
-          }
-          if (result.status === 'BOOKING_UNKNOWN') {
-            setPhase('BOOKING_CONFIRMATION_PENDING');
-            setErrorMessage('Payment was verified. The operator is still confirming your ticket.');
-            return;
-          }
-          if (poll < 3) await new Promise((resolve) => setTimeout(resolve, 1500));
-        }
-        if (mounted) setPhase('PENDING_TIMEOUT');
-      } catch {
-        if (mounted) setPhase('PENDING_TIMEOUT');
-      } finally {
-        clearTimeout(timeout);
-        if (mounted) {
-          setIsVerifying(false);
-          void queryClient.invalidateQueries({ queryKey: ['bookings', 'my-bookings'] });
-        }
-      }
-    }
-
-    void verify();
+    let alive = true;
+    void PendingPaymentStorage.get().then((value) => {
+      if (alive && value?.userId === owner) setPending(value);
+    });
     return () => {
-      mounted = false;
-      clearTimeout(timeout);
-      controller.abort();
+      alive = false;
     };
-  }, [
-    attempt, bookingId, merchantTxnId, gatewayOrderId, gatewayPaymentId, gatewaySignature,
-    queryClient, resetBookingFlow,
-  ]);
-
-  const handleCopyPnr = async (pnr: string) => {
-    if (pnr === 'N/A' || !await Clipboard.setStringAsync(pnr)) return;
-    try {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch {
-      // Safe fallback
-    }
-    setCopiedPnr(true);
-    Alert.alert('PNR Copied', `PNR ${pnr} copied to clipboard.`);
-    setTimeout(() => setCopiedPnr(false), 2500);
-  };
-
-  const handleViewTicket = async () => {
-    await PendingPaymentStorage.clear();
-
-    const targetBookingId = params.bookingId || confirmedBooking?.id || confirmedTicket?.bookingId;
-    if (targetBookingId) {
-      try {
-        Haptics.selectionAsync();
-      } catch {
-        // Safe fallback
-      }
-      router.replace({
-        pathname: '/ticket/[bookingId]' as any,
-        params: { bookingId: targetBookingId },
-      });
-    } else {
-      router.replace('/(tabs)/bookings' as any);
-    }
-  };
-
-  const handleGoHome = async () => {
-    if (phase === 'SUCCESS') await PendingPaymentStorage.clear();
-    try {
-      Haptics.selectionAsync();
-    } catch {
-      // Safe fallback
-    }
-    router.replace('/(tabs)/home' as any);
-  };
-
-  const handleViewMyBookings = () => {
-    try {
-      Haptics.selectionAsync();
-    } catch {
-      // Safe fallback
-    }
-    router.replace('/(tabs)/bookings' as any);
-  };
-
-  const seatsDisplay =
-    confirmedBooking?.seats?.map((s) => s.seatNo).join(', ') ||
-    (params as any).seatNos ||
-    'Confirmed';
-  const pnrDisplay =
-    confirmedTicket?.pnrNumber || confirmedBooking?.providerPnrNo || 'N/A';
-  const ticketNoDisplay =
-    confirmedTicket?.ticketNumber || confirmedBooking?.providerTicketNo || confirmedBooking?.bookingNumber || '';
-  const totalAmountDisplay =
-    confirmedBooking?.totalFare != null
-      ? `₹${Number(confirmedBooking.totalFare).toFixed(2)}`
-      : params.amount
-      ? `₹${Number(params.amount).toFixed(2)}`
+  }, [owner]);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const id = params.bookingId || pending?.bookingId;
+  const transaction = params.merchantTxnId || pending?.merchantTxnId;
+  const stored =
+    pending?.bookingId === id && pending?.merchantTxnId === transaction
+      ? pending
       : null;
-  const operatorName =
-    confirmedBooking?.operatorName || 'Bus Operator';
-  const busTypeName =
-    confirmedBooking?.busType || '—';
-  const primaryPassengerName =
-    confirmedBooking?.passengers?.[0]?.name || confirmedBooking?.contactName || 'Passenger';
-
+  const elapsed = now - started;
+  const active = elapsed < 25000;
+  const query = useQuery<VerifyPaymentResponse>({
+    queryKey: ["payment-outcome", owner, id, transaction],
+    enabled: Boolean(owner && id && transaction && active),
+    retry: false,
+    staleTime: 0,
+    queryFn: async ({ signal }) =>
+      (
+        await apiClient.post(
+          "/payments/verify",
+          {
+            bookingId: id,
+            merchantTxnId: transaction,
+            gatewayPaymentId: stored?.gatewayPaymentId,
+            gatewaySignature: stored?.gatewaySignature,
+          },
+          { signal, timeout: 12000 },
+        )
+      ).data.data,
+    refetchInterval: (q) =>
+      active &&
+      (!q.state.data ||
+        ["PENDING", "BOOKING_UNKNOWN"].includes(q.state.data.status))
+        ? 3000
+        : false,
+  });
+  const result = query.data;
+  const confirmed = result?.booking.status === "CONFIRMED";
+  const terminal = Boolean(
+    result && ["SUCCESS", "FAILED", "BOOKING_FAILED"].includes(result.status),
+  );
+  const phase = confirmed
+    ? "confirmed"
+    : result
+      ? bookingPhase(result.booking.status)
+      : "payment_pending";
+  const busy = active && !terminal && !query.isError;
+  useEffect(() => {
+    if (!result || !terminal || !id) return;
+    void client.invalidateQueries({ queryKey: ["bookings"] });
+    void client.invalidateQueries({ queryKey: ["tickets", "booking", id] });
+    void client.invalidateQueries({ queryKey: ["user", "wallet"] });
+    void client.invalidateQueries({ queryKey: ["passenger-profile", owner] });
+    void client.invalidateQueries({ queryKey: ["offers"] });
+    void PendingPaymentStorage.get().then((record) => {
+      if (record?.bookingId === id && record.userId === owner)
+        void PendingPaymentStorage.clear();
+    });
+    if (confirmed) reset();
+  }, [result, terminal, id, owner, confirmed, client, reset]);
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      <ScrollView contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
-        {/* 1. ELEGANT, NON-TECHNICAL VERIFYING STATE (Zero steppers, zero jargon) */}
-        {isVerifying && (
-          <View style={styles.verifyingContainer}>
-            <View style={styles.pulseIconCircle}>
-              <ActivityIndicator size="large" color="#E65100" />
-            </View>
-
-            <AppText variant="heading2" align="center" style={{ color: colors.text, marginTop: 24, fontWeight: '800' }}>
-              Confirming Your Reservation
-            </AppText>
-
-            <AppText
-              variant="body"
-              align="center"
-              style={{ color: colors.textSecondary, marginTop: 8, paddingHorizontal: 20, lineHeight: 22 }}
-            >
-              Assigning your confirmed seat with {operatorName}...
-            </AppText>
-
-            {/* Reassurance Badge */}
-            <View style={styles.reassurancePill}>
-              <Ionicons name="shield-checkmark" size={16} color="#16A34A" style={{ marginRight: 6 }} />
-              <AppText variant="caption" style={{ color: '#166534', fontWeight: '700' }}>
-                Payment Received • Please do not close or press back
-              </AppText>
-            </View>
-          </View>
-        )}
-
-        {/* 2. SUCCESS CONFIRMATION STATE (Instant Celebration Card) */}
-        {!isVerifying && phase === 'SUCCESS' && (
-          <View style={styles.successContainer}>
-            {/* Celebration Green Icon */}
-            <View style={styles.successIconCircle}>
-              <Ionicons name="checkmark-circle" size={84} color="#16A34A" />
-            </View>
-
-            <AppText variant="heading1" style={styles.successTitle}>
-              Booking Confirmed!
-            </AppText>
-
-            <AppText variant="bodyMedium" style={styles.successSubtitle}>
-              Your booking is confirmed.
-            </AppText>
-
-            {/* Confirmed Ticket Snapshot Card */}
-            <View style={[styles.ticketSnapshotCard, shadows.md]}>
-              {/* Operator Header */}
-              <View style={styles.operatorRow}>
-                <View style={{ flex: 1 }}>
-                  <AppText variant="heading3" style={{ color: colors.text, fontWeight: '800' }}>
-                    {operatorName}
-                  </AppText>
-                  <AppText variant="caption" style={{ color: colors.textSecondary, marginTop: 2 }}>
-                    {busTypeName}
-                  </AppText>
-                </View>
-
-                {/* Seat Pill */}
-                <View style={styles.seatPill}>
-                  <AppText variant="bodySmallMedium" style={{ color: '#FFFFFF', fontWeight: '700' }}>
-                    Seat {seatsDisplay}
-                  </AppText>
-                </View>
-              </View>
-
-              <View style={styles.snapshotDivider} />
-
-              {/* Route & Times */}
-              <View style={styles.routeRow}>
-                <View style={{ flex: 1 }}>
-                  <AppText variant="caption" style={{ color: colors.textSecondary }}>
-                    BOARDING
-                  </AppText>
-                  <AppText variant="heading3" style={{ color: colors.text, fontWeight: '800', marginTop: 2 }}>
-                    {confirmedBooking?.fromCityName || 'Origin'}
-                  </AppText>
-                  <AppText variant="caption" style={{ color: '#E65100', fontWeight: '700', marginTop: 2 }}>
-                    {confirmedBooking?.pickupTime || '—'}
-                  </AppText>
-                </View>
-
-                <View style={styles.routeArrowWrap}>
-                  <Ionicons name="arrow-forward" size={20} color="#94A3B8" />
-                </View>
-
-                <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                  <AppText variant="caption" style={{ color: colors.textSecondary }}>
-                    DROPPING
-                  </AppText>
-                  <AppText variant="heading3" style={{ color: colors.text, fontWeight: '800', marginTop: 2, textAlign: 'right' }}>
-                    {confirmedBooking?.toCityName || 'Destination'}
-                  </AppText>
-                  <AppText variant="caption" style={{ color: colors.textSecondary, marginTop: 2, textAlign: 'right' }}>
-                    {confirmedBooking?.dropoffTime || '—'}
-                  </AppText>
-                </View>
-              </View>
-
-              <View style={styles.snapshotDivider} />
-
-              {/* PNR & Ticket Info Bar with Copy button */}
-              <View style={styles.pnrBar}>
-                <View>
-                  <AppText variant="caption" style={{ color: colors.textSecondary }}>
-                    PNR NUMBER
-                  </AppText>
-                  <AppText variant="bodyLargeBold" style={{ color: colors.text, marginTop: 2 }}>
-                    {pnrDisplay}
-                  </AppText>
-                </View>
-
-                <Pressable
-                  onPress={() => handleCopyPnr(pnrDisplay)}
-                  style={styles.copyPnrBtn}
-                  hitSlop={8}
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+      <ScrollView contentContainerStyle={{ padding: 24, gap: 24, flexGrow: 1 }}>
+        <View style={{ alignItems: "center", gap: 16, paddingVertical: 20 }}>
+          <Ionicons
+            name={
+              confirmed
+                ? "checkmark-circle"
+                : phase === "failed"
+                  ? "alert-circle"
+                  : "shield-checkmark-outline"
+            }
+            size={64}
+            color={confirmed ? colors.success : colors.primary}
+          />
+          <AppText variant="heading2" align="center">
+            {t(`flow.${phase}`)}
+          </AppText>
+          <AppText align="center" style={{ color: colors.textSecondary }}>
+            {t(
+              confirmed
+                ? "flow.confirmed_body"
+                : busy
+                  ? "flow.verifying_body"
+                  : "flow.pending_body",
+            )}
+          </AppText>
+        </View>
+        <AppCard padding="base">
+          <View style={{ gap: 20 }}>
+            {["payment", "operator", "ticket"].map((step, index) => {
+              const done =
+                index === 0
+                  ? ["SUCCESS", "REFUNDED", "PARTIALLY_REFUNDED"].includes(
+                      result?.payment.status || "",
+                    )
+                  : confirmed;
+              return (
+                <View
+                  key={step}
+                  style={{
+                    flexDirection: "row",
+                    gap: 12,
+                    alignItems: "center",
+                  }}
                 >
                   <Ionicons
-                    name={copiedPnr ? 'checkmark' : 'copy-outline'}
-                    size={16}
-                    color="#2563EB"
-                    style={{ marginRight: 4 }}
+                    name={done ? "checkmark-circle" : "ellipse-outline"}
+                    size={24}
+                    color={done ? colors.success : colors.textMuted}
                   />
-                  <AppText variant="caption" style={{ color: colors.info, fontWeight: '700' }}>
-                    {copiedPnr ? 'Copied' : 'Copy'}
-                  </AppText>
-                </Pressable>
-              </View>
-
-              {/* Journey Date & Boarding Location */}
-              <View style={styles.infoMetaWrap}>
-                <View style={styles.metaRow}>
-                  <Ionicons name="calendar-outline" size={16} color="#64748B" style={{ marginRight: 6 }} />
-                  <AppText variant="bodySmall" style={{ color: colors.textSecondary }}>
-                    Date: <AppText variant="bodySmallMedium" style={{ color: colors.text, fontWeight: '700' }}>{confirmedBooking?.journeyDate || '—'}</AppText>
-                  </AppText>
+                  <AppText>{t(`flow.step_${step}`)}</AppText>
                 </View>
-
-                <View style={[styles.metaRow, { marginTop: 6 }]}>
-                  <Ionicons name="person-outline" size={16} color="#64748B" style={{ marginRight: 6 }} />
-                  <AppText variant="bodySmall" style={{ color: colors.textSecondary }}>
-                    Passenger: <AppText variant="bodySmallMedium" style={{ color: colors.text, fontWeight: '700' }}>{primaryPassengerName}</AppText>
-                  </AppText>
-                </View>
-
-                {confirmedBooking?.pickupLocation ? (
-                  <View style={[styles.metaRow, { marginTop: 6 }]}>
-                    <Ionicons name="location-outline" size={16} color="#64748B" style={{ marginRight: 6 }} />
-                    <AppText variant="bodySmall" style={{ color: colors.textSecondary, flex: 1 }} numberOfLines={1}>
-                      Boarding Point: {confirmedBooking.pickupLocation}
-                    </AppText>
-                  </View>
-                ) : null}
-
-                {totalAmountDisplay ? (
-                  <View style={[styles.metaRow, { marginTop: 6 }]}>
-                    <Ionicons name="checkmark-circle-outline" size={16} color="#16A34A" style={{ marginRight: 6 }} />
-                    <AppText variant="bodySmall" style={{ color: '#16A34A', fontWeight: '700' }}>
-                      Paid {totalAmountDisplay} via Razorpay
-                    </AppText>
-                  </View>
-                ) : null}
-              </View>
-            </View>
-
-            {/* Direct Action Buttons */}
-            <View style={styles.actionsWrap}>
-              <AppButton
-                title="View Full Ticket"
-                onPress={handleViewTicket}
-                variant="primary"
-                size="lg"
-                fullWidth
-                style={styles.actionBtn}
-                icon={<Ionicons name="receipt-outline" size={20} color="#FFFFFF" />}
-              />
-
-              <AppButton
-                title="Back to Home"
-                onPress={handleGoHome}
-                variant="outline"
-                size="lg"
-                fullWidth
-                style={[styles.actionBtn, { marginTop: 10 }]}
-                icon={<Ionicons name="home-outline" size={20} color={colors.text} />}
-              />
-            </View>
+              );
+            })}
           </View>
+        </AppCard>
+        {result?.booking ? (
+          <AppCard padding="base">
+            <View style={{ gap: 8 }}>
+              <AppText variant="heading3">
+                {result.booking.fromCityName} → {result.booking.toCityName}
+              </AppText>
+              <AppText>{result.booking.operatorName}</AppText>
+              <AppText>{result.booking.bookingNumber}</AppText>
+            </View>
+          </AppCard>
+        ) : busy ? (
+          <FlowSkeleton kind="card" />
+        ) : null}
+        {!busy && !confirmed && (
+          <AppButton
+            title={t("flow.check_status")}
+            onPress={() => {
+              setStarted(Date.now());
+              setNow(Date.now());
+              void query.refetch({ cancelRefetch: false });
+            }}
+            variant="outline"
+          />
         )}
-
-        {/* 3. OPERATOR DELAYED / RECONCILIATION STATE */}
-        {!isVerifying && (phase === 'BOOKING_CONFIRMATION_PENDING' || phase === 'PENDING_TIMEOUT') && (
-          <View style={styles.fallbackContainer}>
-            <View style={[styles.fallbackIconCircle, { backgroundColor: colors.warningSoft }]}>
-              <Ionicons name="time" size={60} color="#D97706" />
-            </View>
-
-            <AppText variant="heading2" align="center" style={{ color: colors.text, marginTop: 18, fontWeight: '800' }}>
-              Booking Under Processing
-            </AppText>
-
-            <AppText
-              variant="body"
-              align="center"
-              style={{ color: colors.textSecondary, marginTop: 8, paddingHorizontal: 20, lineHeight: 22 }}
-            >
-              {errorMessage || 'Confirmation is still pending. Check the status here or open My Bookings.'}
-            </AppText>
-
-            <View style={styles.actionsWrap}>
-              <AppButton
-                title="Check Status Now"
-                onPress={() => setAttempt((current) => current + 1)}
-                variant="primary"
-                size="lg"
-                fullWidth
-                style={styles.actionBtn}
-                icon={<Ionicons name="refresh" size={20} color="#FFFFFF" />}
-              />
-              <AppButton
-                title="View in My Bookings"
-                onPress={handleViewMyBookings}
-                variant="outline"
-                size="lg"
-                fullWidth
-                style={[styles.actionBtn, { marginTop: 10 }]}
-                icon={<Ionicons name="list" size={20} color="#0F172A" />}
-              />
-            </View>
-          </View>
+        {confirmed && id && (
+          <AppButton
+            title={t("flow.view_ticket")}
+            onPress={() =>
+              router.replace({
+                pathname: "/ticket/[bookingId]",
+                params: { bookingId: id },
+              })
+            }
+            fullWidth
+          />
         )}
-
-        {/* 4. SEAT ALLOCATION FAILED / AUTO-REFUND STATE */}
-        {!isVerifying && phase === 'BOOKING_CONFIRMATION_FAILED' && (
-          <View style={styles.fallbackContainer}>
-            <View style={[styles.fallbackIconCircle, { backgroundColor: colors.dangerSoft }]}>
-              <Ionicons name="alert-circle" size={60} color="#DC2626" />
-            </View>
-
-            <AppText variant="heading2" align="center" style={{ color: colors.text, marginTop: 18, fontWeight: '800' }}>
-              Seat Allocation Issue
-            </AppText>
-
-            <AppText
-              variant="body"
-              align="center"
-              style={{ color: colors.textSecondary, marginTop: 8, paddingHorizontal: 20, lineHeight: 22 }}
-            >
-              {errorMessage || 'The operator could not confirm your seats. See My Bookings for the refund status.'}
-            </AppText>
-
-            <View style={styles.actionsWrap}>
-              <AppButton
-                title="Choose Another Bus"
-                onPress={handleGoHome}
-                variant="primary"
-                size="lg"
-                fullWidth
-                style={styles.actionBtn}
-                icon={<Ionicons name="search" size={20} color="#FFFFFF" />}
-              />
-            </View>
-          </View>
-        )}
-
-        {/* 5. PAYMENT DECLINED / USER CANCELLED STATE */}
-        {!isVerifying && (phase === 'FAILED' || phase === 'NETWORK_ERROR') && (
-          <View style={styles.fallbackContainer}>
-            <View style={[styles.fallbackIconCircle, { backgroundColor: colors.dangerSoft }]}>
-              <Ionicons name="close-circle" size={60} color="#DC2626" />
-            </View>
-
-            <AppText variant="heading2" align="center" style={{ color: colors.text, marginTop: 18, fontWeight: '800' }}>
-              Payment Not Completed
-            </AppText>
-
-            <AppText
-              variant="body"
-              align="center"
-              style={{ color: colors.textSecondary, marginTop: 8, paddingHorizontal: 20, lineHeight: 22 }}
-            >
-              {errorMessage || 'The payment was not completed or was declined by the bank.'}
-            </AppText>
-
-            <View style={styles.actionsWrap}>
-              <AppButton
-                title="My Bookings"
-                onPress={handleViewMyBookings}
-                variant="primary"
-                size="lg"
-                fullWidth
-                style={styles.actionBtn}
-                icon={<Ionicons name="refresh" size={20} color="#FFFFFF" />}
-              />
-              <AppButton
-                title="Back to Home"
-                onPress={handleGoHome}
-                variant="outline"
-                size="lg"
-                fullWidth
-                style={[styles.actionBtn, { marginTop: 10 }]}
-              />
-            </View>
-          </View>
-        )}
+        <AppButton
+          title={t("tab.bookings")}
+          onPress={() => router.replace("/(tabs)/bookings")}
+          variant="outline"
+          fullWidth
+        />
+        <AppButton
+          title={t("tab.home")}
+          onPress={() => router.replace("/(tabs)/home")}
+          variant="ghost"
+        />
       </ScrollView>
     </SafeAreaView>
   );
 }
-
-const createStyles = (colors: ThemeColors) => StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
-  contentContainer: {
-    padding: 20,
-    minHeight: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  verifyingContainer: {
-    width: '100%',
-    maxWidth: 420,
-    alignItems: 'center',
-    paddingVertical: 40,
-  },
-  pulseIconCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#FFF7ED',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  reassurancePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.successSoft,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginTop: 28,
-  },
-  successContainer: {
-    width: '100%',
-    maxWidth: 440,
-    alignItems: 'center',
-    paddingVertical: 10,
-  },
-  successIconCircle: {
-    marginBottom: 12,
-  },
-  successTitle: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: colors.text,
-    textAlign: 'center',
-  },
-  successSubtitle: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginTop: 4,
-    paddingHorizontal: 16,
-  },
-  ticketSnapshotCard: {
-    width: '100%',
-    backgroundColor: colors.surface,
-    borderRadius: 20,
-    padding: 20,
-    marginTop: 22,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  operatorRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  seatPill: {
-    backgroundColor: colors.text,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  snapshotDivider: {
-    height: 1,
-    backgroundColor: colors.divider,
-    marginVertical: 14,
-  },
-  routeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  routeArrowWrap: {
-    paddingHorizontal: 12,
-  },
-  pnrBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: colors.background,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginTop: 4,
-  },
-  copyPnrBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.infoSoft,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 6,
-  },
-  infoMetaWrap: {
-    marginTop: 14,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  actionsWrap: {
-    width: '100%',
-    marginTop: 24,
-  },
-  actionBtn: {
-    width: '100%',
-  },
-  fallbackContainer: {
-    width: '100%',
-    maxWidth: 420,
-    alignItems: 'center',
-    paddingVertical: 30,
-  },
-  fallbackIconCircle: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-});

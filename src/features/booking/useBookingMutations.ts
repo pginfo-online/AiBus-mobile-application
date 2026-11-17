@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuthStore } from '../../stores/authStore';
+import { useMutation, useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../core/api/client';
 import { BookingResponseData } from '../../types/api';
 import { PaymentIntentResponse, PaymentGatewayType, PaymentModeType } from '../payments/usePaymentMutations';
@@ -15,16 +16,19 @@ export interface HoldSeatsPayload {
     email: string;
     phone: string;
     mobile: string;
+    state?: string;
   };
   gstDetails?: {
     gstin: string;
     gstCompany: string;
+    businessAddress?: string;
+    email?: string;
   };
   passengers: Array<{
     seatNo: string;
     seatTypeId: number;
     fare: number;
-    gender: 'M' | 'F';
+    gender: 'M' | 'F' | 'O';
     age: number;
     name: string;
     isAcSeat: boolean;
@@ -58,12 +62,14 @@ export interface CreateBookingPayload {
     seatNo: string;
     seatTypeId: number;
     fare: number;
-    gender: 'M' | 'F';
+    gender: 'M' | 'F' | 'O';
     age: number;
     name: string;
     isAcSeat: boolean;
   }>;
   cancellationPolicy?: any;
+  pickupSnapshot?: unknown;
+  dropoffSnapshot?: unknown;
   couponCode?: string;
   useWallet?: boolean;
 }
@@ -139,17 +145,18 @@ export function useBookingStatusQuery(bookingId?: string | null, enabled = true,
   });
 }
 
-export function useUserBookingsQuery(enabled = true) {
-  return useQuery<BookingResponseData[]>({
-    queryKey: ['bookings', 'my-bookings'],
-    queryFn: async () => {
-      const res = await apiClient.get('/bookings/my-bookings');
-      return res.data?.data || [];
+export function useUserBookingsQuery(enabled = true, filter: 'UPCOMING' | 'PAST_TRIPS' | 'CANCELLED' = 'UPCOMING') {
+  const owner = useAuthStore((s) => s.user?.id);
+  const query = useInfiniteQuery({
+    queryKey: ['bookings', 'my-bookings', owner, filter], enabled: enabled && Boolean(owner),
+    initialPageParam: undefined as string | undefined,
+    queryFn: async ({ pageParam, signal }): Promise<{ items: BookingResponseData[]; nextCursor: string | null }> => {
+      const res = await apiClient.get('/bookings/my-bookings', { params: { limit: 20, cursor: pageParam, filter }, signal });
+      return res.data.data;
     },
-    staleTime: 60 * 1000,
-    gcTime: 10 * 60 * 1000,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-    enabled,
+    getNextPageParam: (last) => last.nextCursor || undefined,
+    staleTime: 30000, gcTime: 600000, refetchOnReconnect: true,
   });
+  const data = query.data?.pages.flatMap((page) => page.items).filter((item, index, all) => all.findIndex((b) => b.id === item.id) === index);
+  return { ...query, data };
 }

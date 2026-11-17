@@ -60,7 +60,7 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "type-check": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/error-normalizer.test.ts tests/localization.test.ts tests/booking-store.test.ts tests/formatters-and-validation.test.ts tests/razorpay-service.test.ts tests/ticket-management-and-cancellation.test.ts tests/automatic-otp-and-phone.test.ts tests/payment-coordinator.test.ts tests/coupons-and-offers.test.ts",
+    "test": "node --experimental-strip-types --test tests/error-normalizer.test.ts tests/localization.test.ts tests/booking-store.test.ts tests/formatters-and-validation.test.ts tests/razorpay-service.test.ts tests/ticket-management-and-cancellation.test.ts tests/automatic-otp-and-phone.test.ts tests/payment-coordinator.test.ts tests/coupons-and-offers.test.ts tests/passengers.test.ts",
     "update:production": "eas update --channel production",
     "update:preview": "eas update --channel preview"
   },

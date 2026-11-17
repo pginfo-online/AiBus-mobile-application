@@ -15,7 +15,7 @@ export default function TabsLayout() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   // Get active upcoming bookings count for badge
-  const { data: bookings } = useUserBookingsQuery(isAuthenticated);
+  const { data: bookings, hasNextPage } = useUserBookingsQuery(isAuthenticated);
   const activeBookingsCount = bookings?.filter(
     (b) => b.status === 'CONFIRMED' || b.status === 'HELD'
   ).length || 0;
@@ -69,7 +69,7 @@ export default function TabsLayout() {
         options={{
           title: t('tab.bookings'),
           tabBarAccessibilityLabel: t('tab.bookings'),
-          tabBarBadge: activeBookingsCount > 0 ? activeBookingsCount : undefined,
+          tabBarBadge: activeBookingsCount > 0 ? `${activeBookingsCount}${hasNextPage ? '+' : ''}` : undefined,
           tabBarBadgeStyle: {
             backgroundColor: colors.primary,
             color: '#FFFFFF',

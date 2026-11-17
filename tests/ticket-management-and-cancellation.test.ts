@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildTicketHtml } from '../src/features/tickets/ticketHtmlTemplate.ts';
+import { bookingSegment, bookingPhase, ticketPollingInterval } from '../src/features/booking/bookingLifecycle.ts';
 import type { TicketResponseData, BookingResponseData } from '../src/types/api';
 
 const mockBooking: BookingResponseData = {
@@ -47,18 +48,17 @@ const mockTicket: TicketResponseData = {
   booking: mockBooking,
 };
 
-test('buildTicketHtml generates valid, styled HTML matching reference design ref-4.png', () => {
+test('buildTicketHtml generates valid, styled HTML using actual data in the trip-details reference layout', () => {
   const html = buildTicketHtml(mockTicket);
 
   // Verifies header banner & branding
-  assert.ok(html.includes('AiBus — Ticket Information'), 'Must include AiBus Ticket Information header');
-  assert.ok(html.includes('Pune to Latur'), 'Must include correct route');
+  assert.ok(html.includes('Trip Details'), 'Must include AiBus Ticket Information header');
+  assert.ok(html.includes('Pune-Latur'), 'Must include correct route');
   assert.ok(html.includes('TV7X89444448'), 'Must include ticket number');
   assert.ok(html.includes('1641662'), 'Must include PNR number');
 
   // Verifies passenger greeting & environmental message
-  assert.ok(html.includes('Hey madhav more,'), 'Must greet passenger by name');
-  assert.ok(html.includes('Save paper, save environment'), 'Must include environmental badge from ref-4');
+  assert.ok(html.includes('Hello madhav more,'), 'Must greet passenger by name');
   assert.ok(html.includes('Sangitam Travels'), 'Must include operator name');
 
   // Verifies boarding and dropping locations
@@ -70,8 +70,8 @@ test('buildTicketHtml generates valid, styled HTML matching reference design ref
   assert.ok(html.includes('471.45'), 'Must include total fare paid');
 
   // Verifies cancellation policy
-  assert.ok(html.includes('Cancellation Policy'), 'Must include cancellation policy section');
-  assert.ok(html.includes('AiBus Wallet'), 'Must mention wallet refund');
+  assert.ok(!html.includes('Children above'), 'Must not invent child passenger policies');
+  assert.ok(!html.includes('AiBus Wallet'), 'Must not promise an unrequested wallet refund');
 });
 
 test('buildTicketHtml correctly escapes special HTML characters in user input', () => {
@@ -92,105 +92,23 @@ test('buildTicketHtml correctly escapes special HTML characters in user input', 
   assert.ok(html.includes('&amp; Co'), 'Must properly escape ampersands');
 });
 
-test('Past vs Upcoming trip classification logic works accurately', () => {
-  const today = new Date().toISOString().slice(0, 10);
-  const futureDate = '2099-12-31';
-  const pastDate = '2020-01-01';
-
-  const upcomingBooking: BookingResponseData = {
-    ...mockBooking,
-    status: 'CONFIRMED',
-    journeyDate: futureDate,
-  };
-
-  const pastBooking: BookingResponseData = {
-    ...mockBooking,
-    status: 'CONFIRMED',
-    journeyDate: pastDate,
-  };
-
-  const cancelledBooking: BookingResponseData = {
-    ...mockBooking,
-    status: 'CANCELLED',
-    journeyDate: futureDate,
-  };
-
-  const isUpcoming = (b: BookingResponseData) =>
-    (b.status === 'CONFIRMED' || b.status === 'HELD') && b.journeyDate >= today;
-
-  assert.equal(isUpcoming(upcomingBooking), true, 'Future confirmed booking must be upcoming');
-  assert.equal(isUpcoming(pastBooking), false, 'Past booking must not be upcoming');
-  assert.equal(isUpcoming(cancelledBooking), false, 'Cancelled booking must not be upcoming');
+test('booking segments and labels reflect authoritative states', () => {
+  assert.equal(bookingSegment({...mockBooking,journeyDate:'2099-01-01'},'2026-11-17'),'UPCOMING');
+  assert.equal(bookingSegment({...mockBooking,journeyDate:'2020-01-01'},'2026-11-17'),'PAST_TRIPS');
+  assert.equal(bookingSegment({...mockBooking,status:'REFUNDED',cancelledAt:'2026-11-17'},'2026-11-17'),'CANCELLED');
+  assert.equal(bookingPhase('BOOKING_FAILED'),'failed');
+  assert.equal(bookingPhase('BOOKING_UNKNOWN'),'uncertain');
 });
-
-test('3-segment booking filter categorization partitions bookings correctly', () => {
-  const today = new Date().toISOString().slice(0, 10);
-  const futureDate = '2099-12-31';
-  const pastDate = '2020-01-01';
-
-  const bookings: BookingResponseData[] = [
-    { ...mockBooking, id: 'b-1', status: 'CONFIRMED', journeyDate: futureDate },
-    { ...mockBooking, id: 'b-2', status: 'HELD', journeyDate: futureDate },
-    { ...mockBooking, id: 'b-3', status: 'PAYMENT_PENDING', journeyDate: futureDate },
-    { ...mockBooking, id: 'b-4', status: 'CONFIRMED', journeyDate: pastDate },
-    { ...mockBooking, id: 'b-5', status: 'CANCELLED', journeyDate: futureDate },
-    { ...mockBooking, id: 'b-6', status: 'CANCELLED', journeyDate: pastDate },
-  ];
-
-  const upcoming: BookingResponseData[] = [];
-  const past: BookingResponseData[] = [];
-  const cancelled: BookingResponseData[] = [];
-
-  bookings.forEach((b) => {
-    if (b.status === 'CANCELLED') {
-      cancelled.push(b);
-    } else if (
-      (b.status === 'CONFIRMED' || b.status === 'HELD' || b.status === 'PAYMENT_PENDING') &&
-      b.journeyDate >= today
-    ) {
-      upcoming.push(b);
-    } else {
-      past.push(b);
-    }
-  });
-
-  assert.equal(upcoming.length, 3, 'Must have 3 upcoming bookings');
-  assert.equal(past.length, 1, 'Must have 1 past booking');
-  assert.equal(cancelled.length, 2, 'Must have 2 cancelled bookings');
-  assert.deepEqual(upcoming.map((b) => b.id), ['b-1', 'b-2', 'b-3']);
-  assert.deepEqual(past.map((b) => b.id), ['b-4']);
-  assert.deepEqual(cancelled.map((b) => b.id), ['b-5', 'b-6']);
+test('ticket polling has a finite response budget and stops on terminal states', () => {
+  assert.equal(ticketPollingInterval('CONFIRMED',1),false);
+  assert.equal(ticketPollingInterval('CANCELLED',1),false);
+  assert.equal(ticketPollingInterval('BOOKING_FAILED',1),false);
+  assert.equal(ticketPollingInterval('BOOKING_UNKNOWN',1),5000);
+  assert.equal(ticketPollingInterval('BOOKING_REQUESTED',12),false);
 });
-
-test('useTicketQuery refetch interval logic halts polling for terminal states and only polls transient states', () => {
-  const evaluateRefetchInterval = (data?: Partial<TicketResponseData> | null) => {
-    if (!data) return false;
-    const status = (data.status || data.booking?.status || '').toUpperCase();
-    const isTransient =
-      status === 'PAYMENT_PENDING' ||
-      status === 'PAYMENT_SUCCESS' ||
-      status === 'BOOKING_REQUESTED' ||
-      status === 'PENDING';
-
-    if (isTransient) {
-      return 2000;
-    }
-    return false;
-  };
-
-  // Undefined initial data
-  assert.equal(evaluateRefetchInterval(null), false, 'Must not poll before data is received');
-  assert.equal(evaluateRefetchInterval(undefined), false, 'Must not poll when undefined');
-
-  // Terminal states: MUST NEVER POLL
-  assert.equal(evaluateRefetchInterval({ status: 'ISSUED' }), false, 'ISSUED must stop polling');
-  assert.equal(evaluateRefetchInterval({ status: 'CONFIRMED' }), false, 'CONFIRMED must stop polling');
-  assert.equal(evaluateRefetchInterval({ status: 'CANCELLED' }), false, 'CANCELLED must stop polling');
-  assert.equal(evaluateRefetchInterval({ status: 'COMPLETED' }), false, 'COMPLETED must stop polling');
-  assert.equal(evaluateRefetchInterval({ status: 'FAILED' }), false, 'FAILED must stop polling');
-
-  // Transient states: MUST POLL SNAPPY (2000ms)
-  assert.equal(evaluateRefetchInterval({ status: 'PAYMENT_PENDING' }), 2000, 'PAYMENT_PENDING must poll');
-  assert.equal(evaluateRefetchInterval({ status: 'PAYMENT_SUCCESS' }), 2000, 'PAYMENT_SUCCESS must poll');
-  assert.equal(evaluateRefetchInterval({ status: 'BOOKING_REQUESTED' }), 2000, 'BOOKING_REQUESTED must poll');
+test('ticket HTML localizes labels and includes only supplied policies', () => {
+  const html=buildTicketHtml({...mockTicket,booking:{...mockBooking,cancellationPolicy:[{title:'Operator baggage rule',description:'One bag'}]}},'hi');
+  assert.ok(html.includes('यात्रा का विवरण'));
+  assert.ok(html.includes('Operator baggage rule'));
+  assert.ok(!html.includes('Pets are not allowed'));
 });

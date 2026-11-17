@@ -7,7 +7,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '../core/api/queryClient';
 import { ThemeProvider, useAppTheme } from '../design-system/theme';
-import { LanguageProvider } from '../core/localization';
+import { LanguageProvider, useTranslation } from '../core/localization';
 import { useAuthStore } from '../stores/authStore';
 import { useAppStore } from '../stores/appStore';
 import { PendingPaymentStorage } from '../core/storage';
@@ -17,6 +17,7 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 
 function RootNavigationLayout() {
   const { colors, isDark } = useAppTheme();
+  const { t } = useTranslation();
   const bootstrapAuth = useAuthStore((s) => s.bootstrapAuth);
 
   useEffect(() => {
@@ -114,14 +115,14 @@ function RootNavigationLayout() {
         <Stack.Screen
           name="booking/review"
           options={{
-            title: 'Review Booking',
+            title: t('passenger.summary'),
             headerShown: true,
           }}
         />
         <Stack.Screen
           name="booking/payment"
           options={{
-            title: 'Select Payment Method',
+            title: t('flow.payment_title'),
             headerShown: true,
           }}
         />

@@ -120,7 +120,7 @@ export const PendingPaymentStorage = {
       console.warn('Failed to clear pending payment record', err);
     }
   },
-  isExpired(record: PendingPaymentRecord, ttlMs: number = 15 * 60 * 1000): boolean {
+  isExpired(record: PendingPaymentRecord, ttlMs: number = 7 * 24 * 60 * 60 * 1000): boolean {
     return Date.now() - record.timestamp > ttlMs;
   },
 };

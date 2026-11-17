@@ -1,3 +1,4 @@
+import { useTranslation } from '../core/localization';
 import React, { useEffect } from 'react';
 import { StyleSheet, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -10,6 +11,7 @@ import { PendingPaymentStorage } from '../core/storage';
 
 export default function PaymentResultScreen() {
   const router = useRouter();
+  const {t} = useTranslation();
   const { colors, spacing } = useAppTheme();
   const { bookingId, merchantTxnId, gatewayOrderId, gatewayPaymentId, gatewaySignature,
     razorpay_order_id, razorpay_payment_id, razorpay_signature, status,
@@ -64,7 +66,7 @@ export default function PaymentResultScreen() {
         variant="bodyMedium"
         style={{ color: colors.textSecondary, marginTop: spacing.base }}
       >
-        Confirming payment return...
+        {t('flow.payment_pending')}
       </AppText>
     </SafeAreaView>
   );
